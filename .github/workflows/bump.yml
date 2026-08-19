@@ -1,0 +1,125 @@
+name: 'Bump Dependencies'
+
+on:
+    schedule:
+        - cron: '0 0 * * *'
+    workflow_dispatch:
+
+jobs:
+    update-deps:
+        if: github.ref == 'refs/heads/main'
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: 🗂 Checkout Code
+              uses: actions/checkout@v4
+
+            - name: 🧩 Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '22.x'
+
+            - name: 📦 Install PNPM
+              run: npm i pnpm -g
+
+            - name: 🗃 Setup Cache Environment
+              id: extcache
+              uses: shivammathur/cache-extensions@v1
+              with:
+                  php-version: 8.2
+                  extensions: bcmath
+                  key: php_extensions_cache
+
+            - name: 🗃 Cache Extensions
+              uses: actions/cache@v4
+              with:
+                  path: ${{ steps.extcache.outputs.dir }}
+                  key: ${{ steps.extcache.outputs.key }}
+                  restore-keys: ${{ steps.extcache.outputs.key }}
+
+            - name: 🐘 Install PHP
+              uses: shivammathur/setup-php@v2
+              with:
+                  php-version: '8.2'
+                  extensions: bcmath
+
+            - name: 🗄 Get Composer Cache Directory
+              id: composer-cache
+              run: |
+                  echo "::set-output name=dir::$(composer config cache-files-dir)"
+
+            - name: 🗃 Cache Composer Dependencies
+              uses: actions/cache@v4
+              id: actions-cache
+              with:
+                  path: ${{ steps.composer-cache.outputs.dir }}
+                  key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+                  restore-keys: |
+                      ${{ runner.os }}-composer-
+
+            - name: 🗂 Cache PHP Dependencies
+              uses: actions/cache@v4
+              id: vendor-cache
+              with:
+                  path: vendor
+                  key: ${{ runner.OS }}-vendor-${{ hashFiles('**/composer.lock') }}
+
+            - name: 🛠️ Create branch
+              id: create_branch
+              run: |
+                  DATE=$(date +'%Y-%m-%d')
+                  BRANCH_NAME="update/update-deps-$DATE"
+
+                  # Check if branch exists and create or switch to it
+                  if git ls-remote --exit-code --heads origin $BRANCH_NAME; then
+                    echo "Branch $BRANCH_NAME already exists on remote."
+                    git fetch origin $BRANCH_NAME
+                    git checkout $BRANCH_NAME
+                    git reset --hard origin/$BRANCH_NAME
+                  else
+                    echo "Creating branch $BRANCH_NAME."
+                    git checkout -b $BRANCH_NAME
+                  fi
+
+                  # Output the branch name for use in the next steps
+                  echo "new_branch=$BRANCH_NAME" >> $GITHUB_ENV
+
+            - name: 🚀 Bump and Install Dependencies
+              run: |
+                  chmod +x ./.scripts/local/bump.sh
+                  ./.scripts/local/bump.sh
+              shell: bash
+
+            - name: 🏗 Build Frontend with Vite
+              run: pnpm build
+
+            - name: 🧪 Check Changes
+              id: check_changes
+              run: |
+                  git diff --exit-code && echo "changes=false" >> $GITHUB_OUTPUT || echo "changes=true" >> $GITHUB_OUTPUT
+
+            - name: 👤 Set up Git user
+              if: steps.check_changes.outputs.changes == 'true'
+              run: |
+                  git config --global user.name "${{ github.actor }}-ci-automation"
+                  git config --global user.email "${{ env.GITHUB_GIT_EMAIL }}"
+
+            - name: 🛠️ Add changes to commit
+              if: steps.check_changes.outputs.changes == 'true'
+              id: update-branch
+              run: |
+                  DATE=$(date +'%Y-%m-%d')
+                  BRANCH_NAME="update/update-deps-$DATE"
+
+                  # Add changes to commit
+                  git add composer.lock package.json pnpm-lock.yaml
+                  git commit -m "Chore: update dependencies on $DATE" || echo "No changes to commit"
+
+                  # Push changes to remote, force with lease for safety
+                  git push --set-upstream origin $BRANCH_NAME || exit 1
+
+            - name: 🔀 Create Pull Request
+              if: steps.check_changes.outputs.changes == 'true'
+              run: gh pr create -B main --title "Update dependencies" --body "Created by Github action"
+              env:
+                  GITHUB_TOKEN: ${{ secrets.ACTION_WORKFLOW_GITHUB_TOKEN }}

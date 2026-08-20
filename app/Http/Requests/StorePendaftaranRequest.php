@@ -25,8 +25,8 @@ class StorePendaftaranRequest extends FormRequest
             // Informasi Pribadi
             'nama' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:pendaftarans,email',
-            'no_hp' => 'required|string|max:14|regex:/^[0-9]+$/',
-            'no_ktp' => 'required|string|size:16|regex:/^[0-9]+$/|unique:pendaftarans,no_ktp',
+            'no_hp' => 'required|string|max:14|regex:/^[0-9]+$/|unique:pendaftarans,no_hp|unique:users,no_telp',
+            'no_ktp' => 'required|string|size:16|regex:/^[0-9]+$/|unique:pendaftarans,no_ktp|unique:users,no_ktp',
             'kebangsaan' => 'required|string|max:100',
             'kualifikasi_pendidikan' => 'required|in:D4,S1,S2,S3',
             'bidang_keahlian' => 'required|string|max:255',

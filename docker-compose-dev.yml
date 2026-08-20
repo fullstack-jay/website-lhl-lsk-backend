@@ -1,0 +1,83 @@
+# Example Dev Environment Setup
+
+name: ls_dev
+
+services:
+    # Laravel App
+    ls_dev_app:
+        build:
+            context: .
+            dockerfile: ./.docker/local/Dockerfile
+        container_name: ls_dev_app
+        restart: on-failure
+        ports:
+            - ${APP_PORT}:8080
+        volumes:
+            - ./:/var/www/html
+        environment:
+            RUN_LARAVEL_AUTOMATIONS: 'true'
+            AUTORUN_ENABLED: 'true'
+            AUTORUN_LARAVEL_STORAGE_LINK: 'true'
+            SSL_MODE: 'off'
+            PHP_POOL_NAME: 'app_pool'
+            PHP_OPCACHE_ENABLE: '1'
+        networks:
+            - ls_dev_app_net
+            - ls_dev_redis_net
+        command: ['php', '/var/www/html/artisan', 'schedule:work']
+
+    # Database
+    ls_dev_db:
+        image: mysql:latest
+        container_name: ls_dev_db
+        restart: unless-stopped
+        ports:
+            - 3307:3306
+        volumes:
+            - ls_dev_db_volume:/var/lib/mysql
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            ON_CREATE_DB: ${DB_DATABASE}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+        networks:
+            - ls_dev_app_net
+
+    # Redis
+    ls_dev_redis:
+        image: redis:alpine
+        container_name: ls_dev_redis
+        hostname: laravel_app_x
+        restart: always
+        ports:
+            - ${REDIS_PORT}:6379
+        networks:
+            - ls_dev_redis_net
+
+    # MailHog Server
+    ls_dev_mail_hog:
+        image: mailhog/mailhog:latest
+        container_name: ls_dev_mail_hog
+        restart: unless-stopped
+        ports:
+            - 10001:1025
+            - 10002:8025
+
+networks:
+    ls_dev_app_net:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 10.20.0.0/16
+
+    ls_dev_redis_net:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 10.50.0.0/16
+
+volumes:
+    ls_dev_db_volume:

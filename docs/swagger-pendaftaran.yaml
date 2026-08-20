@@ -1,0 +1,685 @@
+openapi: 3.0.0
+info:
+  title: LHK Sertifikasi - Pendaftaran API
+  description: API documentation untuk sistem pendaftaran sertifikasi LHK
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@lhk-sertifikasi.com
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Local Development Server
+  - url: https://api.lhk-sertifikasi.com/api/v1
+    description: Production Server
+
+tags:
+  - name: Pendaftaran
+    description: Operasi pendaftaran sertifikasi
+  - name: Public
+    description: Endpoint publik tanpa autentikasi
+  - name: Admin
+    description: Endpoint admin dengan autentikasi
+
+paths:
+  /pendaftaran:
+    post:
+      tags:
+        - Pendaftaran
+        - Public
+      summary: Submit pendaftaran baru
+      description: |
+        Submit form pendaftaran sertifikasi baru.
+        Sistem akan otomatis generate:
+        - Nomor Pendaftaran (format: REG-YYYYMMDD-XXXX)
+        - Random Password (6 digit angka acak)
+      operationId: createPendaftaran
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PendaftaranRequest'
+            example:
+              nama: "Budi Santoso"
+              email: "budi@example.com"
+              no_hp: "081234567890"
+              no_ktp: "1234567890123456"
+              kebangsaan: "Indonesia"
+              kualifikasi_pendidikan: "S1"
+              bidang_keahlian: "Teknik Lingkungan"
+              alamat: "Jl. Merdeka No. 1, Jakarta Pusat"
+              propinsi: "DKI Jakarta"
+              kota: "Jakarta Pusat"
+              kecamatan: "Gambir"
+              kelurahan: "Gambir"
+              wil_ujikom: "Jakarta"
+              nama_institusi: "PT. Lingkungan Bersih Jaya"
+              jabatan: "Environmental Engineer"
+              alamat_kantor: "Jl. Sudirman No. 123"
+              kode_pos: "10220"
+              no_telp_kantor: "02112345678"
+              no_fax_kantor: "02112345679"
+              email_kantor: "info@lingkungan.com"
+      responses:
+        '201':
+          description: Pendaftaran berhasil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendaftaranSuccessResponse'
+              example:
+                success: true
+                message: "Pendaftaran berhasil! Data Anda telah tersimpan dengan nomor pendaftaran dan password di bawah."
+                data:
+                  no_pendaftaran: "REG-20240820-0001"
+                  nama: "Budi Santoso"
+                  email: "budi@example.com"
+                  password: "123456"
+                  status: "PENDING"
+        '422':
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+              example:
+                success: false
+                message: "Validasi gagal"
+                errors:
+                  email: ["Email sudah terdaftar"]
+                  no_ktp: ["Nomor KTP harus 16 karakter"]
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Pendaftaran
+        - Admin
+      summary: Get semua pendaftaran
+      description: Mengambil list semua pendaftaran dengan filter dan pagination
+      operationId: getPendaftarans
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          description: Filter berdasarkan status
+          schema:
+            type: string
+            enum: [PENDING, DIVERIFIKASI, DISETUJUI, DITOLAK]
+          example: "PENDING"
+        - name: search
+          in: query
+          description: Search by nama, no_pendaftaran, atau email
+          schema:
+            type: string
+          example: "Budi"
+        - name: per_page
+          in: query
+          description: Jumlah item per halaman
+          schema:
+            type: integer
+            default: 15
+            minimum: 1
+            maximum: 100
+          example: 15
+        - name: page
+          in: query
+          description: Nomor halaman
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+          example: 1
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendaftaranListResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Pendaftaran
+        - Admin
+      summary: Hapus pendaftaran
+      description: Soft delete data pendaftaran
+      operationId: deletePendaftaran
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID pendaftaran
+          schema:
+            type: integer
+          example: 1
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteSuccessResponse'
+        '404':
+          description: Data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /pendaftaran/statistics:
+    get:
+      tags:
+        - Pendaftaran
+        - Admin
+      summary: Get statistik pendaftaran
+      description: Mengambil data statistik pendaftaran
+      operationId: getPendaftaranStatistics
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatisticsResponse'
+              example:
+                success: true
+                data:
+                  total: 100
+                  pending: 25
+                  diverifikasi: 15
+                  disetujui: 50
+                  ditolak: 10
+
+  /pendaftaran/{no_pendaftaran}:
+    get:
+      tags:
+        - Pendaftaran
+        - Public
+      summary: Cek status pendaftaran
+      description: Mengambil detail pendaftaran berdasarkan nomor pendaftaran
+      operationId: getPendaftaranByNo
+      parameters:
+        - name: no_pendaftaran
+          in: path
+          required: true
+          description: Nomor pendaftaran
+          schema:
+            type: string
+            pattern: '^REG-[0-9]{8}-[0-9]{4}$'
+          example: "REG-20240820-0001"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendaftaranDetailResponse'
+              example:
+                success: true
+                data:
+                  id: 1
+                  no_pendaftaran: "REG-20240820-0001"
+                  nama: "Budi Santoso"
+                  email: "budi@example.com"
+                  no_hp: "081234567890"
+                  kebangsaan: "Indonesia"
+                  kualifikasi_pendidikan: "S1"
+                  bidang_keahlian: "Teknik Lingkungan"
+                  wil_ujikom: "Jakarta"
+                  nama_institusi: "PT. Lingkungan Bersih Jaya"
+                  jabatan: "Environmental Engineer"
+                  status: "PENDING"
+                  catatan: null
+                  tanggal_verifikasi: null
+                  created_at: "20 Aug 2024 13:21"
+        '404':
+          description: Data tidak ditemukan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: "Data pendaftaran tidak ditemukan"
+
+  /pendaftaran/{id}/status:
+    put:
+      tags:
+        - Pendaftaran
+        - Admin
+      summary: Update status pendaftaran
+      description: Update status verifikasi pendaftaran
+      operationId: updatePendaftaranStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID pendaftaran
+          schema:
+            type: integer
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+            example:
+              status: "DISETUJUI"
+              catatan: "Dokumen lengkap dan valid"
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PendaftaranDetailResponse'
+              example:
+                success: true
+                message: "Status pendaftaran berhasil diperbarui"
+                data:
+                  id: 1
+                  no_pendaftaran: "REG-20240820-0001"
+                  nama: "Budi Santoso"
+                  email: "budi@example.com"
+                  status: "DISETUJUI"
+                  catatan: "Dokumen lengkap dan valid"
+                  tanggal_verifikasi: "20 Aug 2024 15:30"
+        '422':
+          description: Validasi gagal
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Authentication token menggunakan Laravel Sanctum
+
+  schemas:
+    PendaftaranRequest:
+      type: object
+      required:
+        - nama
+        - email
+        - no_hp
+        - no_ktp
+        - kebangsaan
+        - kualifikasi_pendidikan
+        - bidang_keahlian
+        - alamat
+        - wil_ujikom
+        - nama_institusi
+        - jabatan
+        - alamat_kantor
+        - kode_pos
+      properties:
+        nama:
+          type: string
+          maxLength: 255
+          description: Nama lengkap peserta
+          example: "Budi Santoso"
+        email:
+          type: string
+          format: email
+          maxLength: 255
+          description: Email aktif untuk notifikasi
+          example: "budi@example.com"
+        no_hp:
+          type: string
+          maxLength: 14
+          pattern: '^[0-9]+$'
+          description: Nomor handphone aktif
+          example: "081234567890"
+        no_ktp:
+          type: string
+          maxLength: 16
+          minLength: 16
+          pattern: '^[0-9]+$'
+          description: Nomor KTP 16 digit
+          example: "1234567890123456"
+        kebangsaan:
+          type: string
+          maxLength: 100
+          description: Kewarganegaraan
+          example: "Indonesia"
+        kualifikasi_pendidikan:
+          type: string
+          enum: [D4, S1, S2, S3]
+          description: Kualifikasi pendidikan terakhir
+          example: "S1"
+        bidang_keahlian:
+          type: string
+          maxLength: 255
+          description: Bidang keahlian/profesi
+          example: "Teknik Lingkungan"
+        alamat:
+          type: string
+          description: Alamat lengkap domisili
+          example: "Jl. Merdeka No. 1, Jakarta Pusat"
+        propinsi:
+          type: string
+          maxLength: 100
+          description: Provinsi (opsional)
+          example: "DKI Jakarta"
+        kota:
+          type: string
+          maxLength: 100
+          description: Kota/Kabupaten (opsional)
+          example: "Jakarta Pusat"
+        kecamatan:
+          type: string
+          maxLength: 100
+          description: Kecamatan (opsional)
+          example: "Gambir"
+        kelurahan:
+          type: string
+          maxLength: 100
+          description: Kelurahan (opsional)
+          example: "Gambir"
+        wil_ujikom:
+          type: string
+          maxLength: 100
+          description: Lokasi uji kompetensi yang dipilih
+          example: "Jakarta"
+        nama_institusi:
+          type: string
+          maxLength: 255
+          description: Nama institusi/perusahaan tempat bekerja
+          example: "PT. Lingkungan Bersih Jaya"
+        jabatan:
+          type: string
+          maxLength: 255
+          description: Jabatan saat ini
+          example: "Environmental Engineer"
+        alamat_kantor:
+          type: string
+          description: Alamat lengkap kantor
+          example: "Jl. Sudirman No. 123, Jakarta Selatan"
+        kode_pos:
+          type: string
+          maxLength: 5
+          pattern: '^[0-9]+$'
+          description: Kode pos kantor
+          example: "10220"
+        no_telp_kantor:
+          type: string
+          maxLength: 20
+          description: Nomor telepon kantor (opsional)
+          example: "02112345678"
+        no_fax_kantor:
+          type: string
+          maxLength: 20
+          description: Nomor fax kantor (opsional)
+          example: "02112345679"
+        email_kantor:
+          type: string
+          format: email
+          maxLength: 255
+          description: Email kantor (opsional)
+          example: "info@lingkungan.com"
+
+    UpdateStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [DIVERIFIKASI, DISETUJUI, DITOLAK]
+          description: Status baru pendaftaran
+          example: "DISETUJUI"
+        catatan:
+          type: string
+          description: Catatan verifikasi (opsional)
+          example: "Dokumen lengkap dan valid"
+
+    PendaftaranSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Pendaftaran berhasil! Silakan cek email Anda untuk verifikasi."
+        data:
+          type: object
+          properties:
+            no_pendaftaran:
+              type: string
+              description: Nomor pendaftaran yang digenerate
+              example: "REG-20240820-0001"
+            nama:
+              type: string
+              example: "Budi Santoso"
+            email:
+              type: string
+              format: email
+              example: "budi@example.com"
+            password:
+              type: string
+              description: Password yang digenerate (simpan dengan aman!)
+              example: "123456"
+            status:
+              type: string
+              enum: [PENDING, DIVERIFIKASI, DISETUJUI, DITOLAK]
+              example: "PENDING"
+
+    PendaftaranDetailResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Status pendaftaran berhasil diperbarui"
+        data:
+          type: object
+          properties:
+            id:
+              type: integer
+              example: 1
+            no_pendaftaran:
+              type: string
+              example: "REG-20240820-0001"
+            nama:
+              type: string
+              example: "Budi Santoso"
+            email:
+              type: string
+              format: email
+              example: "budi@example.com"
+            no_hp:
+              type: string
+              example: "081234567890"
+            kebangsaan:
+              type: string
+              example: "Indonesia"
+            kualifikasi_pendidikan:
+              type: string
+              enum: [D4, S1, S2, S3]
+              example: "S1"
+            bidang_keahlian:
+              type: string
+              example: "Teknik Lingkungan"
+            wil_ujikom:
+              type: string
+              example: "Jakarta"
+            nama_institusi:
+              type: string
+              example: "PT. Lingkungan Bersih Jaya"
+            jabatan:
+              type: string
+              example: "Environmental Engineer"
+            status:
+              type: string
+              enum: [PENDING, DIVERIFIKASI, DISETUJUI, DITOLAK]
+              example: "PENDING"
+            catatan:
+              type: string
+              nullable: true
+              example: "Dokumen lengkap dan valid"
+            tanggal_verifikasi:
+              type: string
+              format: date-time
+              nullable: true
+              example: "20 Aug 2024 15:30"
+            created_at:
+              type: string
+              format: date-time
+              example: "20 Aug 2024 13:21"
+
+    PendaftaranListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendaftaranData'
+        pagination:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total semua data
+              example: 100
+            per_page:
+              type: integer
+              description: Jumlah data per halaman
+              example: 15
+            current_page:
+              type: integer
+              description: Halaman saat ini
+              example: 1
+            last_page:
+              type: integer
+              description: Total halaman
+              example: 7
+
+    PendaftaranData:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        no_pendaftaran:
+          type: string
+          example: "REG-20240820-0001"
+        nama:
+          type: string
+          example: "Budi Santoso"
+        email:
+          type: string
+          format: email
+          example: "budi@example.com"
+        status:
+          type: string
+          enum: [PENDING, DIVERIFIKASI, DISETUJUI, DITOLAK]
+          example: "PENDING"
+        tanggal_verifikasi:
+          type: string
+          nullable: true
+          example: "20 Aug 2024 15:30"
+        created_at:
+          type: string
+          example: "20 Aug 2024 13:21"
+
+    StatisticsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            total:
+              type: integer
+              description: Total semua pendaftaran
+              example: 100
+            pending:
+              type: integer
+              description: Jumlah pendaftaran pending
+              example: 25
+            diverifikasi:
+              type: integer
+              description: Jumlah pendaftaran diverifikasi
+              example: 15
+            disetujui:
+              type: integer
+              description: Jumlah pendaftaran disetujui
+              example: 50
+            ditolak:
+              type: integer
+              description: Jumlah pendaftaran ditolak
+              example: 10
+
+    ValidationErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Validasi gagal"
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+          example:
+            email: ["Email sudah terdaftar"]
+            no_ktp: ["Nomor KTP harus 16 karakter"]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: "Terjadi kesalahan saat memproses request"
+        error:
+          type: string
+          example: "Error detail message"
+
+    DeleteSuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: "Data pendaftaran berhasil dihapus"

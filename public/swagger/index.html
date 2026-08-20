@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LHK Sertifikasi - API Documentation</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.10.0/swagger-ui.css">
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        .topbar {
+            background-color: #1f2937;
+            padding: 15px 0;
+        }
+        .topbar .wrapper {
+            max-width: 1460px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        .topbar .link {
+            display: inline-block;
+            color: white;
+            text-decoration: none;
+            font-size: 24px;
+            font-weight: bold;
+        }
+        .topbar .info {
+            color: #9ca3af;
+            font-size: 14px;
+            margin-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="wrapper">
+            <a class="link" href="/">LHK Sertifikasi API</a>
+            <span class="info">v1.0.0</span>
+        </div>
+    </div>
+
+    <div id="swagger-ui"></div>
+
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.0/swagger-ui-bundle.js"></script>
+    <script src="https://unpkg.com/swagger-ui-dist@5.10.0/swagger-ui-standalone-preset.js"></script>
+    <script>
+        window.onload = function() {
+            const spec = {
+                "openapi": "3.0.0",
+                "info": {
+                    "title": "LHK Sertifikasi - Pendaftaran API",
+                    "description": "API documentation untuk sistem pendaftaran sertifikasi LHK",
+                    "version": "1.0.0",
+                    "contact": {
+                        "name": "API Support",
+                        "email": "support@lhk-sertifikasi.com"
+                    }
+                },
+                "servers": [
+                    {
+                        "url": window.location.origin + "/api/v1",
+                        "description": "Local Development Server"
+                    }
+                ],
+                "tags": [
+                    {"name": "Pendaftaran", "description": "Operasi pendaftaran sertifikasi"},
+                    {"name": "Public", "description": "Endpoint publik tanpa autentikasi"},
+                    {"name": "Admin", "description": "Endpoint admin dengan autentikasi"}
+                ],
+                "paths": {
+                    "/pendaftaran": {
+                        "post": {
+                            "tags": ["Pendaftaran", "Public"],
+                            "summary": "Submit pendaftaran baru",
+                            "description": "Submit form pendaftaran sertifikasi baru. Sistem akan otomatis generate nomor pendaftaran dan password.",
+                            "requestBody": {
+                                "required": true,
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["nama", "email", "no_hp", "no_ktp", "kebangsaan", "kualifikasi_pendidikan", "bidang_keahlian", "alamat", "wil_ujikom", "nama_institusi", "jabatan", "alamat_kantor", "kode_pos"],
+                                            "properties": {
+                                                "nama": {"type": "string", "maxLength": 255, "example": "Budi Santoso"},
+                                                "email": {"type": "string", "format": "email", "maxLength": 255, "example": "budi@example.com"},
+                                                "no_hp": {"type": "string", "maxLength": 14, "pattern": "^[0-9]+$", "example": "081234567890"},
+                                                "no_ktp": {"type": "string", "maxLength": 16, "minLength": 16, "pattern": "^[0-9]+$", "example": "1234567890123456"},
+                                                "kebangsaan": {"type": "string", "maxLength": 100, "example": "Indonesia"},
+                                                "kualifikasi_pendidikan": {"type": "string", "enum": ["D4", "S1", "S2", "S3"], "example": "S1"},
+                                                "bidang_keahlian": {"type": "string", "maxLength": 255, "example": "Teknik Lingkungan"},
+                                                "alamat": {"type": "string", "example": "Jl. Merdeka No. 1"},
+                                                "propinsi": {"type": "string", "maxLength": 100, "example": "DKI Jakarta"},
+                                                "kota": {"type": "string", "maxLength": 100, "example": "Jakarta Pusat"},
+                                                "kecamatan": {"type": "string", "maxLength": 100, "example": "Gambir"},
+                                                "kelurahan": {"type": "string", "maxLength": 100, "example": "Gambir"},
+                                                "wil_ujikom": {"type": "string", "maxLength": 100, "example": "Jakarta"},
+                                                "nama_institusi": {"type": "string", "maxLength": 255, "example": "PT. Contoh"},
+                                                "jabatan": {"type": "string", "maxLength": 255, "example": "Manager"},
+                                                "alamat_kantor": {"type": "string", "example": "Jl. Kantor No. 123"},
+                                                "kode_pos": {"type": "string", "maxLength": 5, "pattern": "^[0-9]+$", "example": "10110"},
+                                                "no_telp_kantor": {"type": "string", "maxLength": 20, "example": "02112345678"},
+                                                "no_fax_kantor": {"type": "string", "maxLength": 20, "example": "02187654321"},
+                                                "email_kantor": {"type": "string", "format": "email", "maxLength": 255, "example": "kantor@example.com"}
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "responses": {
+                                "201": {
+                                    "description": "Pendaftaran berhasil",
+                                    "content": {
+                                        "application/json": {
+                                            "schema": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "success": {"type": "boolean", "example": true},
+                                                    "message": {"type": "string", "example": "Pendaftaran berhasil!"},
+                                                    "data": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "no_pendaftaran": {"type": "string", "example": "REG-20240820-0001"},
+                                                            "nama": {"type": "string", "example": "Budi Santoso"},
+                                                            "email": {"type": "string", "example": "budi@example.com"},
+                                                            "password": {"type": "string", "example": "AbC123!@#xyZ"},
+                                                            "status": {"type": "string", "example": "PENDING"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "422": {
+                                    "description": "Validasi gagal"
+                                }
+                            }
+                        },
+                        "get": {
+                            "tags": ["Pendaftaran", "Admin"],
+                            "summary": "Get semua pendaftaran",
+                            "description": "Mengambil list semua pendaftaran dengan filter dan pagination",
+                            "security": [{"bearerAuth": []}],
+                            "parameters": [
+                                {"name": "status", "in": "query", "schema": {"type": "string", "enum": ["PENDING", "DIVERIFIKASI", "DISETUJUI", "DITOLAK"]}, "example": "PENDING"},
+                                {"name": "search", "in": "query", "schema": {"type": "string"}, "example": "Budi"},
+                                {"name": "per_page", "in": "query", "schema": {"type": "integer", "default": 15}, "example": 15}
+                            ],
+                            "responses": {
+                                "200": {"description": "Success"},
+                                "401": {"description": "Unauthorized"}
+                            }
+                        },
+                        "delete": {
+                            "tags": ["Pendaftaran", "Admin"],
+                            "summary": "Hapus pendaftaran",
+                            "security": [{"bearerAuth": []}],
+                            "parameters": [
+                                {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 1}
+                            ],
+                            "responses": {
+                                "200": {"description": "Success"},
+                                "404": {"description": "Not found"}
+                            }
+                        }
+                    },
+                    "/pendaftaran/statistics": {
+                        "get": {
+                            "tags": ["Pendaftaran", "Admin"],
+                            "summary": "Get statistik pendaftaran",
+                            "security": [{"bearerAuth": []}],
+                            "responses": {
+                                "200": {
+                                    "description": "Success",
+                                    "content": {
+                                        "application/json": {
+                                            "schema": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "success": {"type": "boolean"},
+                                                    "data": {
+                                                        "type": "object",
+                                                        "properties": {
+                                                            "total": {"type": "integer"},
+                                                            "pending": {"type": "integer"},
+                                                            "diverifikasi": {"type": "integer"},
+                                                            "disetujui": {"type": "integer"},
+                                                            "ditolak": {"type": "integer"}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "/pendaftaran/{no_pendaftaran}": {
+                        "get": {
+                            "tags": ["Pendaftaran", "Public"],
+                            "summary": "Cek status pendaftaran",
+                            "parameters": [
+                                {"name": "no_pendaftaran", "in": "path", "required": true, "schema": {"type": "string"}, "example": "REG-20240820-0001"}
+                            ],
+                            "responses": {
+                                "200": {"description": "Success"},
+                                "404": {"description": "Not found"}
+                            }
+                        }
+                    },
+                    "/pendaftaran/{id}/status": {
+                        "put": {
+                            "tags": ["Pendaftaran", "Admin"],
+                            "summary": "Update status pendaftaran",
+                            "security": [{"bearerAuth": []}],
+                            "parameters": [
+                                {"name": "id", "in": "path", "required": true, "schema": {"type": "integer"}, "example": 1}
+                            ],
+                            "requestBody": {
+                                "required": true,
+                                "content": {
+                                    "application/json": {
+                                        "schema": {
+                                            "type": "object",
+                                            "required": ["status"],
+                                            "properties": {
+                                                "status": {"type": "string", "enum": ["DIVERIFIKASI", "DISETUJUI", "DITOLAK"]},
+                                                "catatan": {"type": "string"}
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "responses": {
+                                "200": {"description": "Success"},
+                                "422": {"description": "Validation error"}
+                            }
+                        }
+                    }
+                },
+                "components": {
+                    "securitySchemes": {
+                        "bearerAuth": {
+                            "type": "http",
+                            "scheme": "bearer",
+                            "bearerFormat": "JWT",
+                            "description": "Authentication token menggunakan Laravel Sanctum"
+                        }
+                    }
+                }
+            };
+
+            SwaggerUIBundle({
+                spec: spec,
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "StandaloneLayout",
+                defaultModelsExpandDepth: 1,
+                defaultModelExpandDepth: 1,
+                docExpansion: "list",
+                filter: true,
+                tryItOutEnabled: true,
+                persistAuthorization: true,
+                withCredentials: true
+            });
+        };
+    </script>
+</body>
+</html>

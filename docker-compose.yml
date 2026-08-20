@@ -1,0 +1,72 @@
+# Example Prod Environment Setup
+
+name: ls_prod
+
+services:
+    # Laravel App
+    ls_prod_app:
+        build:
+            context: .
+            dockerfile: ./.docker/prod/Dockerfile
+        container_name: ls_prod_app
+        stdin_open: true
+        tty: true
+        restart: always
+        ports:
+            - ${APP_PORT}:8080
+        volumes:
+            - ./:/var/www/html
+        environment:
+            RUN_LARAVEL_AUTOMATIONS: 'false'
+            AUTORUN_ENABLED: 'true'
+            AUTORUN_LARAVEL_STORAGE_LINK: 'false'
+            AUTORUN_LARAVEL_MIGRATION: 'true'
+            SSL_MODE: 'mixed'
+            PHP_POOL_NAME: 'app_pool'
+            PHP_OPCACHE_ENABLE: '1'
+        networks:
+            - ls_prod_app_net
+            - ls_prod_redis_net
+        command: ['php', '/var/www/html/artisan', 'schedule:work']
+
+    # Database
+    ls_prod_db:
+        image: mysql:latest
+        container_name: ls_prod_db
+        restart: unless-stopped
+        ports:
+            - ${DB_PORT}:3306
+        environment:
+            MYSQL_DATABASE: ${DB_DATABASE}
+            ON_CREATE_DB: ${DB_DATABASE}
+            MYSQL_USER: ${DB_USERNAME}
+            MYSQL_PASSWORD: ${DB_PASSWORD}
+            MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+        networks:
+            - ls_prod_app_net
+
+    # Redis
+    ls_prod_redis:
+        image: redis:alpine
+        container_name: ls_prod_redis
+        hostname: ls_prod_app
+        restart: always
+        ports:
+            - ${REDIS_PORT}:6379
+        networks:
+            - ls_prod_redis_net
+
+networks:
+    ls_prod_app_net:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 10.10.0.0/16
+
+    ls_prod_redis_net:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 10.40.0.0/16

@@ -1,0 +1,57 @@
+# Laravel
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+npm-debug.log
+yarn-error.log
+
+# Laravel 11 specific
+/bootstrap/cache/packages/*.php
+/bootstrap/cache/services.php
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Composer
+/vendor/
+composer.phar
+composer.lock
+
+# NPM
+node_modules/
+npm-debug.log
+yarn-error.log
+pnpm-debug.log
+
+# Build artifacts
+/public/css
+/public/js
+/public/mix-manifest.json
+/public/build
+
+# Logs
+*.log
+/storage/logs

@@ -114,7 +114,34 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function getRoleAttribute(): string
     {
-        return strtoupper($this->level ?? 'USER');
+        $level = strtolower($this->level ?? 'user');
+
+        // Mapping level ke role yang sesuai
+        return match($level) {
+            'user' => 'USER',
+            'peserta' => 'USER',
+            'komite-teknis' => 'KOMITE-TEKNIS',
+            'penguji' => 'PENGUJI',
+            'admin' => 'ADMIN',
+            'superadmin' => 'ADMIN',
+            default => strtoupper($level),
+        };
+    }
+
+    /**
+     * Check if user is komite teknis
+     */
+    public function isKomiteTeknis(): bool
+    {
+        return in_array($this->level, ['komite-teknis'], true);
+    }
+
+    /**
+     * Check if user is penguji
+     */
+    public function isPenguji(): bool
+    {
+        return in_array($this->level, ['penguji'], true);
     }
 
     /**

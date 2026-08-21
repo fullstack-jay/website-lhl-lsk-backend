@@ -228,4 +228,15 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->username;
     }
+
+    /**
+     * Get the value of the model's primary key.
+     * Override for Sanctum compatibility with string primary key
+     *
+     * @return mixed
+     */
+    public function getKey()
+    {
+        return $this->username;
+    }
 }

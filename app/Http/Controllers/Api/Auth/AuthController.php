@@ -14,18 +14,21 @@ use Illuminate\Validation\ValidationException;
 class AuthController extends ApiController
 {
     /**
-     * Login user dengan No. KTP/NIK atau No. Handphone + Password
+     * Login user - Mendukung multiple login methods:
+     * - Admin: dengan username
+     * - Peserta/Komite Teknis/Penguji: dengan No. KTP/NIK atau No. Handphone
      * POST /api/v1/auth/login
      */
     public function login(Request $request)
     {
-        // Validation
+        // Validation - accept either 'username' (for admin) or 'identifier' (KTP/HP for others)
         $validator = Validator::make($request->all(), [
-            'identifier' => 'required|string',
+            'username' => 'required_without:identifier|string',
+            'identifier' => 'required_without:username|string',
             'password' => 'required|string|min:4',
         ], [
-            'identifier.required' => 'No. KTP/NIK atau No. Handphone wajib diisi',
-            'identifier.string' => 'Format identifier tidak valid',
+            'username.required_without' => 'Username wajib diisi (untuk admin)',
+            'identifier.required_without' => 'No. KTP/NIK atau No. Handphone wajib diisi (untuk peserta/komite/penguji)',
             'password.required' => 'Password wajib diisi',
             'password.min' => 'Password minimal 4 karakter',
         ]);
@@ -38,29 +41,34 @@ class AuthController extends ApiController
             ], 422);
         }
 
+        $username = $request->input('username');
         $identifier = $request->input('identifier');
         $password = $request->input('password');
 
-        // Find user by KTP or phone number
-        $user = User::where(function ($query) use ($identifier) {
-            $query->where('no_ktp', $identifier)
-                  ->orWhere('no_telp', $identifier);
-        })->active()->first();
+        $user = null;
+
+        // Admin login by username
+        if ($username) {
+            $user = User::where('username', $username)->active()->first();
+        }
+        // Peserta/Komite/Penguji login by KTP/HP
+        elseif ($identifier) {
+            $user = User::where(function ($query) use ($identifier) {
+                $query->where('no_ktp', $identifier)
+                      ->orWhere('no_telp', $identifier);
+            })->active()->first();
+        }
 
         // Check if user exists
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No. KTP/NIK atau No. Handphone tidak ditemukan',
-            ], 401);
-        }
+            $message = $username
+                ? 'Username tidak ditemukan'
+                : 'No. KTP/NIK atau No. Handphone tidak ditemukan';
 
-        // Check if user is peserta (user role only)
-        if (!$user->isPeserta()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Akses ditolak. Halaman ini khusus untuk Peserta.',
-            ], 403);
+                'message' => $message,
+            ], 401);
         }
 
         // Check password
@@ -71,8 +79,16 @@ class AuthController extends ApiController
             ], 401);
         }
 
+        // Determine token name based on role
+        $tokenName = match(true) {
+            $user->isAdmin() => 'admin-auth-token',
+            $user->isKomiteTeknis() => 'komite-teknis-auth-token',
+            $user->isPenguji() => 'penguji-auth-token',
+            default => 'peserta-auth-token',
+        };
+
         // Create token for API authentication
-        $token = $user->createToken('auth-token')->plainTextToken;
+        $token = $user->createToken($tokenName)->plainTextToken;
 
         return response()->json([
             'success' => true,

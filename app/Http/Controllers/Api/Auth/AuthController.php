@@ -55,6 +55,14 @@ class AuthController extends ApiController
             ], 401);
         }
 
+        // Check if user is peserta (user role only)
+        if (!$user->isPeserta()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Halaman ini khusus untuk Peserta.',
+            ], 403);
+        }
+
         // Check password
         if (!Hash::check($password, $user->password)) {
             return response()->json([

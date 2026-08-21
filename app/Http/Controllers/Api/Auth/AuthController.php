@@ -141,18 +141,28 @@ class AuthController extends ApiController
     }
 
     /**
-     * Update password
+     * Update password tanpa memerlukan password lama
      * POST /api/v1/auth/update-password
      */
     public function updatePassword(Request $request)
     {
+        // Get authenticated user from token
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi tidak valid. Silakan login kembali.',
+            ], 401);
+        }
+
+        // Validate request
         $validator = Validator::make($request->all(), [
-            'current_password' => 'required',
-            'password' => 'required|string|min:4',
+            'password' => 'required|min:6|confirmed',
         ], [
-            'current_password.required' => 'Password saat ini wajib diisi',
-            'password.required' => 'Password baru wajib diisi',
-            'password.min' => 'Password minimal 4 karakter',
+            'password.required' => 'Kata sandi baru wajib diisi',
+            'password.min' => 'Kata sandi minimal 6 karakter',
+            'password.confirmed' => 'Konfirmasi kata sandi tidak cocok',
         ]);
 
         if ($validator->fails()) {
@@ -163,30 +173,23 @@ class AuthController extends ApiController
             ], 422);
         }
 
-        $user = $request->user();
-
-        // Check current password
-        if (!Hash::check($request->current_password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Password saat ini salah',
-            ], 401);
-        }
-
         try {
-            $user->update([
-                'password' => Hash::make($request->password),
-            ]);
+            // Update password
+            $user->password = Hash::make($request->password);
+            $user->save();
+
+            // Revoke all tokens for security (force user to login again)
+            $user->tokens()->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Password berhasil diperbarui',
-            ]);
+                'message' => 'Kata sandi berhasil diubah',
+            ], 200);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Gagal memperbarui password',
+                'message' => 'Gagal memperbarui kata sandi',
                 'error' => $e->getMessage(),
             ], 500);
         }

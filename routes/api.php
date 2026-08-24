@@ -81,6 +81,73 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'destroy']);
     });
+
+    // Skema Sertifikasi routes
+    Route::prefix('skema')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\SkemaKkniController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\SkemaKkniController::class, 'statistics']);
+        Route::post('/', [\App\Http\Controllers\Api\SkemaKkniController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\SkemaKkniController::class, 'update']);
+        Route::put('/{id}/toggle', [\App\Http\Controllers\Api\SkemaKkniController::class, 'toggleActive']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\SkemaKkniController::class, 'destroy']);
+    });
+
+    // Unit Kompetensi routes
+    Route::prefix('unit-kompetensi')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'destroy']);
+    });
+
+    // Elemen Kompetensi routes
+    Route::prefix('elemen-kompetensi')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'destroy']);
+    });
+
+    // Kriteria Unjuk Kerja routes
+    Route::prefix('kriteria-unjukkerja')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'store']);
+        Route::post('/batch', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'batchStore']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'destroy']);
+    });
+
+    // Persyaratan Peserta routes
+    Route::prefix('persyaratan')->group(function () {
+        Route::put('/{id}', [\App\Http\Controllers\Api\PersyaratanController::class, 'updatePeserta']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\PersyaratanController::class, 'destroyPeserta']);
+    });
+
+    // Persyaratan TUK routes
+    Route::prefix('persyaratan-tuk')->group(function () {
+        Route::put('/{id}', [\App\Http\Controllers\Api\PersyaratanController::class, 'updateTuk']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\PersyaratanController::class, 'destroyTuk']);
+    });
+
+    // Skema-specific routes
+    Route::prefix('skema/{id}')->group(function () {
+        // Persyaratan Peserta
+        Route::post('/persyaratan', [\App\Http\Controllers\Api\PersyaratanController::class, 'storePeserta']);
+
+        // Persyaratan TUK
+        Route::post('/persyaratan-tuk', [\App\Http\Controllers\Api\PersyaratanController::class, 'storeTuk']);
+        Route::post('/persyaratan-tuk/batch', [\App\Http\Controllers\Api\PersyaratanController::class, 'batchStoreTuk']);
+
+        // MAPA routes
+        Route::post('/mapa1a', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa1a']);
+        Route::delete('/mapa1a/{profil}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa1a']);
+        Route::post('/mapa1b', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa1b']);
+        Route::post('/mapa2', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa2']);
+    });
+
+    // MAPA direct delete routes
+    Route::delete('/mapa1b/{id}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa1b']);
+    Route::delete('/mapa2/{id}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa2']);
 });
 
 /*
@@ -121,4 +188,55 @@ Route::prefix('mutudoc')->group(function () {
     Route::get('/jenis', [\App\Http\Controllers\Api\MutudocController::class, 'jenisList']);
     Route::get('/kategori', [\App\Http\Controllers\Api\MutudocController::class, 'kategoriList']);
     Route::get('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Skema Sertifikasi Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('skema')->group(function () {
+    // Public routes untuk view skema
+    Route::get('/', [\App\Http\Controllers\Api\SkemaKkniController::class, 'index']);
+    Route::get('/options', [\App\Http\Controllers\Api\SkemaKkniController::class, 'options']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\SkemaKkniController::class, 'statistics']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\SkemaKkniController::class, 'show']);
+
+    // Unit Kompetensi routes
+    Route::prefix('unit-kompetensi')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'show']);
+    });
+
+    // Elemen Kompetensi routes
+    Route::prefix('elemen-kompetensi')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'show']);
+    });
+
+    // Kriteria Unjuk Kerja routes
+    Route::prefix('kriteria-unjukkerja')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'index']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'show']);
+    });
+
+    // Persyaratan Peserta routes
+    Route::get('/{id}/persyaratan', [\App\Http\Controllers\Api\PersyaratanController::class, 'indexPeserta']);
+
+    // Persyaratan TUK routes
+    Route::get('/{id}/persyaratan-tuk', [\App\Http\Controllers\Api\PersyaratanController::class, 'indexTuk']);
+
+    // MAPA routes
+    Route::get('/{id}/mapa1a/{profil?}', [\App\Http\Controllers\Api\MapaController::class, 'showMapa1a']);
+    Route::get('/{id}/mapa1b', [\App\Http\Controllers\Api\MapaController::class, 'showMapa1b']);
+    Route::get('/{id}/mapa2', [\App\Http\Controllers\Api\MapaController::class, 'showMapa2']);
+
+    // Helper routes
+    Route::get('/unit-kompetensi/{id}/elemen', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'byUnit']);
+    Route::get('/unit-kompetensi/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'bySkema']);
+    Route::get('/elemen-kompetensi/{id}/kuk', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'byElemen']);
+
+    // Kategori kandidat & MUK
+    Route::get('/kategori-kandidat', [\App\Http\Controllers\Api\MapaController::class, 'kategoriKandidat']);
+    Route::get('/muk', [\App\Http\Controllers\Api\MapaController::class, 'mukOptions']);
 });

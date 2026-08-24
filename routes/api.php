@@ -73,6 +73,40 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'destroy']);
     });
+
+    // SKKNI routes (Standar Kompetensi)
+    Route::prefix('skkni')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\SkkniController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\SkkniController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'destroy']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public Dokumen Mutu Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('mutudoc')->group(function () {
+    // Public routes untuk view dokumen
+    Route::get('/', [\App\Http\Controllers\Api\MutudocController::class, 'index']);
+    Route::get('/grouped', [\App\Http\Controllers\Api\MutudocController::class, 'grouped']);
+    Route::get('/jenis', [\App\Http\Controllers\Api\MutudocController::class, 'jenisList']);
+    Route::get('/kategori', [\App\Http\Controllers\Api\MutudocController::class, 'kategoriList']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public SKKNI Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('skkni')->group(function () {
+    // Public routes untuk view standar kompetensi
+    Route::get('/', [\App\Http\Controllers\Api\SkkniController::class, 'index']);
+    Route::get('/jenis', [\App\Http\Controllers\Api\SkkniController::class, 'jenisList']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'show']);
 });
 
 /*

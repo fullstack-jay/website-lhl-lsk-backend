@@ -172,8 +172,31 @@ Route::prefix('rekening')->group(function () {
 
 Route::get('/lsp/options', [\App\Http\Controllers\Api\BiayaController::class, 'lspOptions']);
 
+// LSK routes (public)
+Route::prefix('lsp')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\LspController::class, 'index']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\LspController::class, 'statistics']);
+    Route::get('/options', [\App\Http\Controllers\Api\LspController::class, 'options']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\LspController::class, 'show']);
+});
+
+// Wilayah routes (public)
+Route::prefix('wilayah')->group(function () {
+    Route::get('/provinsi', [\App\Http\Controllers\Api\WilayahController::class, 'getProvinsi']);
+    Route::get('/kota/{provinsiId}', [\App\Http\Controllers\Api\WilayahController::class, 'getKota']);
+    Route::get('/kecamatan/{kotaId}', [\App\Http\Controllers\Api\WilayahController::class, 'getKecamatan']);
+    Route::get('/detail/{id}', [\App\Http\Controllers\Api\WilayahController::class, 'getDetail']);
+});
+
 // Admin routes
 Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    // LSK routes (admin only)
+    Route::prefix('lsp')->group(function () {
+        Route::post('/', [\App\Http\Controllers\Api\LspController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\LspController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\LspController::class, 'destroy']);
+    });
+
     // Biaya Sertifikasi routes
     Route::prefix('biaya')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'index']);
@@ -224,20 +247,6 @@ Route::prefix('skkni')->group(function () {
     Route::get('/', [\App\Http\Controllers\Api\SkkniController::class, 'index']);
     Route::get('/jenis', [\App\Http\Controllers\Api\SkkniController::class, 'jenisList']);
     Route::get('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'show']);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Public Dokumen Mutu Routes
-|--------------------------------------------------------------------------
-*/
-Route::prefix('mutudoc')->group(function () {
-    // Public routes untuk view dokumen
-    Route::get('/', [\App\Http\Controllers\Api\MutudocController::class, 'index']);
-    Route::get('/grouped', [\App\Http\Controllers\Api\MutudocController::class, 'grouped']);
-    Route::get('/jenis', [\App\Http\Controllers\Api\MutudocController::class, 'jenisList']);
-    Route::get('/kategori', [\App\Http\Controllers\Api\MutudocController::class, 'kategoriList']);
-    Route::get('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'show']);
 });
 
 /*

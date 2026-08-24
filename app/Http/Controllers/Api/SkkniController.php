@@ -279,4 +279,25 @@ class SkkniController extends Controller
             'data' => $jenis,
         ]);
     }
+
+    /**
+     * Get SKKNI options for dropdown
+     * GET /api/v1/skkni/options
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function options()
+    {
+        $skkni = Skkni::orderBy('nama')->get(['id', 'nama', 'no_skkni']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $skkni->map(function ($item) {
+                return [
+                    'value' => $item->id,
+                    'label' => $item->no_skkni ? "{$item->no_skkni} - {$item->nama}" : $item->nama,
+                ];
+            }),
+        ]);
+    }
 }

@@ -159,6 +159,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 Route::prefix('biaya')->group(function () {
     Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'index']);
     Route::get('/statistics', [\App\Http\Controllers\Api\BiayaController::class, 'statistics']);
+    Route::get('/jenis', [\App\Http\Controllers\Api\BiayaController::class, 'jenisBiaya']);
     Route::get('/skema/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'bySkema']);
     Route::get('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'show']);
 });
@@ -246,6 +247,7 @@ Route::prefix('skkni')->group(function () {
     // Public routes untuk view standar kompetensi
     Route::get('/', [\App\Http\Controllers\Api\SkkniController::class, 'index']);
     Route::get('/jenis', [\App\Http\Controllers\Api\SkkniController::class, 'jenisList']);
+    Route::get('/options', [\App\Http\Controllers\Api\SkkniController::class, 'options']);
     Route::get('/{id}', [\App\Http\Controllers\Api\SkkniController::class, 'show']);
 });
 

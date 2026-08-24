@@ -152,6 +152,56 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Biaya Routes
+|--------------------------------------------------------------------------
+*/
+// Public routes
+Route::prefix('biaya')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'index']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\BiayaController::class, 'statistics']);
+    Route::get('/skema/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'bySkema']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'show']);
+});
+
+Route::prefix('rekening')->group(function () {
+    Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'rekeningIndex']);
+    Route::get('/bank-options', [\App\Http\Controllers\Api\BiayaController::class, 'bankOptions']);
+    Route::get('/lsp/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'rekeningByLsp']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'rekeningShow']);
+});
+
+Route::get('/lsp/options', [\App\Http\Controllers\Api\BiayaController::class, 'lspOptions']);
+
+// Admin routes
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    // Biaya Sertifikasi routes
+    Route::prefix('biaya')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\BiayaController::class, 'statistics']);
+        Route::post('/', [\App\Http\Controllers\Api\BiayaController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'destroy']);
+    });
+
+    // Jenis Biaya routes
+    Route::prefix('biaya/jenis')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'jenisBiaya']);
+        Route::post('/', [\App\Http\Controllers\Api\BiayaController::class, 'storeJenisBiaya']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'updateJenisBiaya']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'destroyJenisBiaya']);
+    });
+
+    // Rekening Bank routes
+    Route::prefix('rekening')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\BiayaController::class, 'rekeningIndex']);
+        Route::post('/', [\App\Http\Controllers\Api\BiayaController::class, 'storeRekening']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'updateRekening']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\BiayaController::class, 'destroyRekening']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
 | Public Dokumen Mutu Routes
 |--------------------------------------------------------------------------
 */

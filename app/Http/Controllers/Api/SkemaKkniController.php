@@ -125,11 +125,11 @@ class SkemaKkniController extends Controller
             'kbji' => 'nullable|string|max:50',
             'jenjang' => 'nullable|integer|min:1|max:9',
             'keterangan_bukti' => 'nullable|string',
-            'apl02' => 'nullable|in:elemen,KUK',
-            'jenis_skema' => 'nullable|in:Okupasi,KKNI,Klaster',
+            'apl02' => 'nullable|string|in:elemen,KUK,unit',
+            'jenis_skema' => 'nullable|string|in:Okupasi,KKNI,Klaster',
             'skema_induk' => 'nullable|integer|exists:skema_kkni,id',
             'kodeskema_bnsp' => 'nullable|string|max:100',
-            'aktif' => 'nullable|in:Y,N',
+            'aktif' => 'nullable|string|in:Y,N',
             'id_skkni' => 'nullable|integer|exists:skkni,id',
             'file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
         ]);
@@ -222,6 +222,7 @@ class SkemaKkniController extends Controller
     {
         $skema = SkemaKkni::findOrFail($id);
 
+        // Custom validation: empty string should be treated as null for enum fields
         $validator = Validator::make($request->all(), [
             'kode_skema' => 'nullable|string|max:100|unique:skema_kkni,kode_skema,' . $id,
             'judul' => 'nullable|string|max:255',
@@ -233,11 +234,11 @@ class SkemaKkniController extends Controller
             'kbji' => 'nullable|string|max:50',
             'jenjang' => 'nullable|integer|min:1|max:9',
             'keterangan_bukti' => 'nullable|string',
-            'apl02' => 'nullable|in:elemen,KUK',
-            'jenis_skema' => 'nullable|in:Okupasi,KKNI,Klaster',
+            'apl02' => 'nullable|string|in:elemen,KUK,unit',
+            'jenis_skema' => 'nullable|string|in:Okupasi,KKNI,Klaster',
             'skema_induk' => 'nullable|integer|exists:skema_kkni,id',
             'kodeskema_bnsp' => 'nullable|string|max:100',
-            'aktif' => 'nullable|in:Y,N',
+            'aktif' => 'nullable|string|in:Y,N',
             'id_skkni' => 'nullable|integer|exists:skkni,id',
             'file' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
         ]);
@@ -295,10 +296,15 @@ class SkemaKkniController extends Controller
             ];
 
             foreach ($fields as $field) {
-                if ($request->input($field) !== null) {
+                $value = $request->input($field);
+                // Handle empty string as null for enum fields
+                if ($value === '') {
+                    $value = null;
+                }
+                if ($value !== null) {
                     $updateData[$field] = in_array($field, ['kode_skema', 'judul', 'areakerja', 'kode_sektor', 'kbli', 'kbji', 'kodeskema_bnsp'])
-                        ? strip_tags(trim($request->input($field)))
-                        : $request->input($field);
+                        ? strip_tags(trim($value))
+                        : $value;
                 }
             }
 

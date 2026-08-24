@@ -10,6 +10,8 @@ class ElemenKompetensi extends Model
 {
     protected $table = 'elemen_kompetensi';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'elemen_kompetensi',
         'id_unitkompetensi',

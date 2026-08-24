@@ -9,6 +9,8 @@ class KriteriaUnjukkerja extends Model
 {
     protected $table = 'kriteria_unjukkerja';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'kriteria',
         'kriteria_pasif',

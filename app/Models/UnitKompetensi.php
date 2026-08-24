@@ -10,6 +10,8 @@ class UnitKompetensi extends Model
 {
     protected $table = 'unit_kompetensi';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'kode_unit',
         'judul',

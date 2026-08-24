@@ -10,6 +10,8 @@ class SkemaKkni extends Model
 {
     protected $table = 'skema_kkni';
 
+    public $timestamps = false;
+
     protected $fillable = [
         'kode_skema',
         'judul',

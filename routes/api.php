@@ -64,4 +64,27 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}/status', [\App\Http\Controllers\Api\PengaduanController::class, 'updateStatus']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\PengaduanController::class, 'destroy']);
     });
+
+    // Mutudoc routes (Dokumen Mutu)
+    Route::prefix('mutudoc')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\MutudocController::class, 'index']);
+        Route::get('/grouped', [\App\Http\Controllers\Api\MutudocController::class, 'grouped']);
+        Route::post('/', [\App\Http\Controllers\Api\MutudocController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'destroy']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public Dokumen Mutu Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('mutudoc')->group(function () {
+    // Public routes untuk view dokumen
+    Route::get('/', [\App\Http\Controllers\Api\MutudocController::class, 'index']);
+    Route::get('/grouped', [\App\Http\Controllers\Api\MutudocController::class, 'grouped']);
+    Route::get('/jenis', [\App\Http\Controllers\Api\MutudocController::class, 'jenisList']);
+    Route::get('/kategori', [\App\Http\Controllers\Api\MutudocController::class, 'kategoriList']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'show']);
 });

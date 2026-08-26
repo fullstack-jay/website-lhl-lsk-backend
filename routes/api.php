@@ -301,3 +301,79 @@ Route::prefix('skema')->group(function () {
     Route::get('/kategori-kandidat', [\App\Http\Controllers\Api\MapaController::class, 'kategoriKandidat']);
     Route::get('/muk', [\App\Http\Controllers\Api\MapaController::class, 'mukOptions']);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Event Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('event')->group(function () {
+    // Public routes
+    Route::get('/', [\App\Http\Controllers\Api\EventController::class, 'index']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\EventController::class, 'statistics']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\EventController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Jadwal Asesmen Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('jadwal')->group(function () {
+    // Public routes
+    Route::get('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'index']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'statistics']);
+    Route::get('/options', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'options']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'show']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| TUK Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('tuk')->group(function () {
+    // Public routes
+    Route::get('/', [\App\Http\Controllers\Api\TukController::class, 'index']);
+    Route::get('/statistics', [\App\Http\Controllers\Api\TukController::class, 'statistics']);
+    Route::get('/options', [\App\Http\Controllers\Api\TukController::class, 'options']);
+    Route::get('/{id}', [\App\Http\Controllers\Api\TukController::class, 'show']);
+});
+
+// Admin routes
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    // Event routes (admin only)
+    Route::prefix('event')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\EventController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\EventController::class, 'statistics']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\EventController::class, 'show']);
+    });
+
+    // Jadwal Asesmen routes (admin only) - using 'jadwal' prefix
+    Route::prefix('jadwal')->group(function () {
+        Route::post('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'destroy']);
+        Route::put('/{id}/status', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateStatus']);
+    });
+
+    // Jadwal Asesmen routes (admin only) - using 'jadwal-asesmen' prefix (frontend expects this)
+    Route::prefix('jadwal-asesmen')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'statistics']);
+        Route::get('/options', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'options']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'destroy']);
+        Route::put('/{id}/status', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateStatus']);
+    });
+
+    // TUK routes (admin only)
+    Route::prefix('tuk')->group(function () {
+        Route::get('/options', [\App\Http\Controllers\Api\TukController::class, 'options']);
+        Route::post('/', [\App\Http\Controllers\Api\TukController::class, 'store']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\TukController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\TukController::class, 'destroy']);
+    });
+});

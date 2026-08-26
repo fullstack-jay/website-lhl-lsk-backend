@@ -75,28 +75,64 @@ class PersyaratanTukController extends Controller
      */
     public function store(Request $request)
     {
-        // Validate request
-        $validator = Validator::make($request->all(), [
-            'id_skemakkni' => 'required|exists:skema_kkni,id',
-            'perlengkapan' => 'required',
-            'spesifikasi' => 'required',
-        ], [
-            'id_skemakkni.required' => 'Skema sertifikasi wajib dipilih',
-            'id_skemakkni.exists' => 'Skema sertifikasi tidak valid',
-            'perlengkapan.required' => 'Perlengkapan wajib diisi',
-            'spesifikasi.required' => 'Spesifikasi wajib diisi',
+        // Debug logging
+        \Log::info('PersyaratanTuk Store Request:', [
+            'all' => $request->all(),
+            'input' => $request->input(),
         ]);
 
-        if ($validator->fails()) {
+        // Validate request with more flexible field names
+        // Support both: id_skemakkni (backend) and id_skema/skemaId (frontend)
+        $validator = Validator::make($request->all(), [
+            'id_skemakkni' => 'nullable|exists:skema_kkni,id',
+            'id_skema' => 'nullable|exists:skema_kkni,id',
+            'skemaId' => 'nullable|exists:skema_kkni,id',
+            'perlengkapan' => 'required|string',
+            'spesifikasi' => 'required|string',
+        ], [
+            'perlengkapan.required' => 'Perlengkapan wajib diisi',
+            'perlengkapan.string' => 'Perlengkapan harus berupa teks',
+            'spesifikasi.required' => 'Spesifikasi wajib diisi',
+            'spesifikasi.string' => 'Spesifikasi harus berupa teks',
+            'id_skemakkni.exists' => 'Skema sertifikasi tidak ditemukan di database',
+            'id_skema.exists' => 'Skema sertifikasi tidak ditemukan di database',
+            'skemaId.exists' => 'Skema sertifikasi tidak ditemukan di database',
+        ]);
+
+        // Custom validation for skema ID (at least one must exist)
+        $skemaId = $request->id_skemakkni ?? $request->id_skema ?? $request->skemaId;
+        if (!$skemaId) {
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
-                'errors' => $validator->errors(),
+                'errors' => [
+                    'skema' => ['Skema sertifikasi wajib dipilih']
+                ],
+                'debug' => [
+                    'received' => $request->all(),
+                    'available_skema_ids' => \App\Models\SkemaKkni::pluck('id')->toArray(),
+                ],
+            ], 422);
+        }
+
+        if ($validator->fails()) {
+            \Log::error('PersyaratanTuk Validation Failed:', [
+                'errors' => $validator->errors()->toArray(),
+                'request' => $request->all(),
+                'available_skema_ids' => \App\Models\SkemaKkni::pluck('id')->toArray(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors()->toArray(),
+                'debug' => [
+                    'available_skema_ids' => \App\Models\SkemaKkni::pluck('id')->toArray(),
+                ],
             ], 422);
         }
 
         // Check for duplicate
-        $exists = SkemaPersyaratantuk::where('id_skemakkni', $request->id_skemakkni)
+        $exists = SkemaPersyaratantuk::where('id_skemakkni', $skemaId)
             ->where('perlengkapan', $request->perlengkapan)
             ->exists();
 
@@ -108,8 +144,11 @@ class PersyaratanTukController extends Controller
         }
 
         try {
+            // Get the correct ID field (support both id_skemakkni and id_skema)
+            $skemaId = $request->id_skemakkni ?? $request->id_skema;
+
             $persyaratan = SkemaPersyaratantuk::create([
-                'id_skemakkni' => $request->id_skemakkni,
+                'id_skemakkni' => $skemaId,
                 'perlengkapan' => $request->perlengkapan,
                 'spesifikasi' => $request->spesifikasi,
             ]);

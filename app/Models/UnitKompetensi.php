@@ -92,4 +92,62 @@ class UnitKompetensi extends Model
             ->get()
             ->sum('kriteria_unjukkerja_count');
     }
+
+    /**
+     * Get elemen count alias
+     */
+    public function getElemenCountAttribute(): int
+    {
+        return $this->jumlah_elemen;
+    }
+
+    /**
+     * Get KUK count alias
+     */
+    public function getKukCountAttribute(): int
+    {
+        return $this->jumlah_kuk;
+    }
+
+    /**
+     * Scope search by kode or judul
+     */
+    public function scopeSearch($query, $search)
+    {
+        if ($search) {
+            return $query->where('kode_unit', 'like', '%' . $search . '%')
+                ->orWhere('judul', 'like', '%' . $search . '%')
+                ->orWhere('judul_eng', 'like', '%' . $search . '%');
+        }
+        return $query;
+    }
+
+    /**
+     * Check if unit can be deleted (only if no elemen exists)
+     */
+    public function canBeDeleted(): bool
+    {
+        return $this->jumlah_elemen === 0;
+    }
+
+    /**
+     * Get full unit name with code
+     */
+    public function getFullNameAttribute(): string
+    {
+        return "{$this->kode_unit} - {$this->judul}";
+    }
+
+    /**
+     * Get jenis label
+     */
+    public function getJenisLabelAttribute(): string
+    {
+        return match($this->jenis) {
+            'SKKNI' => 'SKKNI',
+            'Standar Khusus' => 'Standar Khusus',
+            'Standar Internasional' => 'Standar Internasional',
+            default => 'Unknown',
+        };
+    }
 }

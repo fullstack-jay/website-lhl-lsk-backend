@@ -18,7 +18,7 @@ class SkemaKkniController extends Controller
      */
     public function index(Request $request)
     {
-        $query = SkemaKkni::query();
+        $query = SkemaKkni::with(['skkni']);
 
         // Filter by aktif status
         if ($request->has('aktif') && $request->aktif) {
@@ -61,9 +61,9 @@ class SkemaKkniController extends Controller
 
         $result = $query->paginate($perPage, ['*'], 'page', $page);
 
-        // Add statistics to each item
+        // Add skkni_list and statistics to each item (accessors are auto-loaded via $appends)
         $items = collect($result->items())->map(function ($skema) {
-            $skema->statistics = $skema->statistics;
+            // Accessors are automatically loaded via $appends in the model
             return $skema;
         });
 

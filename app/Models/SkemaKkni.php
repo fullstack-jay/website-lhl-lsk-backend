@@ -38,6 +38,8 @@ class SkemaKkni extends Model
         'id_skkni' => 'integer',
     ];
 
+    protected $appends = ['skkni_list', 'statistics'];
+
     /**
      * Relationship to Unit Kompetensi
      */
@@ -95,6 +97,67 @@ class SkemaKkni extends Model
     }
 
     /**
+     * Get SKKNI list from unit kompetensi
+     */
+    public function getSkkniListAttribute(): \Illuminate\Support\Collection
+    {
+        // Get unique SKKNI from unit kompetensi
+        $skkniIds = $this->unitKompetensi()
+            ->whereNotNull('id_skkni')
+            ->pluck('id_skkni')
+            ->unique()
+            ->filter();
+
+        return Skkni::whereIn('id', $skkniIds)
+            ->get(['id', 'no_skkni', 'nama', 'file']);
+    }
+
+    /**
+     * Get statistics for this scheme
+     */
+    public function getStatisticsAttribute(): array
+    {
+        $unitCount = $this->unitKompetensi()->count();
+        $elemenCount = $this->unitKompetensi()
+            ->withCount('elemenKompetensi')
+            ->get()
+            ->sum('elemen_kompetensi_count');
+        $kukCount = $this->unitKompetensi()
+            ->with('elemenKompetensi.kriteriaUnjukkerja')
+            ->get()
+            ->sum(function ($unit) {
+                return $unit->elemenKompetensi->sum(function ($elemen) {
+                    return $elemen->kriteriaUnjukkerja->count();
+                });
+            });
+
+        // Get peserta count using raw query to avoid relationship issues
+        $pesertaCount = \DB::table('asesi_asesmen')
+            ->where('id_skemakkni', $this->id)
+            ->distinct('id_asesi')
+            ->count('id_asesi');
+
+        // Get jadwal asesmen count (using id_skemakkni column)
+        $jadwalCount = \DB::table('jadwal_asesmen')
+            ->where('id_skemakkni', $this->id)
+            ->count();
+
+        // Get persyaratan counts
+        $persyaratanPesertaCount = $this->persyaratan()->count();
+        $persyaratanTukCount = $this->persyaratanTuk()->count();
+
+        return [
+            'jumlah_unit' => $unitCount,
+            'jumlah_elemen' => $elemenCount,
+            'jumlah_kuk' => $kukCount,
+            'jumlah_peserta' => $pesertaCount ?? 0,
+            'jumlah_jadwal' => $jadwalCount ?? 0,
+            'jumlah_persyaratan_peserta' => $persyaratanPesertaCount,
+            'jumlah_persyaratan_tuk' => $persyaratanTukCount,
+        ];
+    }
+
+    /**
      * Get file URL attribute
      */
     public function getFileUrlAttribute(): string
@@ -149,27 +212,5 @@ class SkemaKkni extends Model
             });
         }
         return $query;
-    }
-
-    /**
-     * Get statistics for this scheme
-     */
-    public function getStatisticsAttribute(): array
-    {
-        return [
-            'jumlah_unit' => $this->unitKompetensi()->count(),
-            'jumlah_elemen' => $this->unitKompetensi()
-                ->withCount('elemenKompetensi')
-                ->get()
-                ->sum('elemen_kompetensi_count'),
-            'jumlah_kuk' => $this->unitKompetensi()
-                ->with('elemenKompetensi.kriteriaUnjukkerja')
-                ->get()
-                ->sum(function ($unit) {
-                    return $unit->elemenKompetensi->sum(function ($elemen) {
-                        return $elemen->kriteriaUnjukkerja->count();
-                    });
-                }),
-        ];
     }
 }

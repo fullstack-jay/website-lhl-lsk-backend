@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\UnitKompetensi;
 use App\Models\SkemaKkni;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class UnitKompetensiController extends Controller
@@ -111,34 +112,52 @@ class UnitKompetensiController extends Controller
      */
     public function store(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'kode_unit' => 'required|string|max:100',
+        // Map frontend field names to backend field names
+        $requestData = [
+            'kode_unit' => $request->input('kodeunit') ?? $request->input('kode_unit'),
+            'judul' => $request->input('namaunit') ?? $request->input('judul'),
+            'judul_eng' => $request->input('namaunit_eng') ?? $request->input('judul_eng'),
+            'id_skemakkni' => $request->input('skemakknilsp') ?? $request->input('id_skemakkni'),
+            'id_skkni' => $request->input('id_skkni'),
+            'jenis' => $request->input('jenis'),
+        ];
+
+        $validator = Validator::make($requestData, [
+            'kode_unit' => 'required|string|max:50',
             'judul' => 'required|string|max:255',
             'judul_eng' => 'nullable|string|max:255',
             'id_skemakkni' => 'required|integer|exists:skema_kkni,id',
             'id_skkni' => 'nullable|integer|exists:skkni,id',
             'jenis' => 'nullable|in:SKKNI,Standar Khusus,Standar Internasional',
         ], [
-            'id_skemakkni.required' => 'Skema sertifikasi harus dipilih',
-            'id_skemakkni.exists' => 'Skema sertifikasi tidak ditemukan',
-            'id_skkni.exists' => 'Standar kompetensi tidak ditemukan',
+            'kode_unit.required' => 'Kode Unit wajib diisi',
+            'judul.required' => 'Judul wajib diisi',
+            'id_skemakkni.required' => 'Skema KKNI wajib dipilih',
+            'id_skemakkni.exists' => 'Skema KKNI tidak ditemukan',
+            'id_skkni.exists' => 'SKKNI tidak ditemukan',
+            'jenis.in' => 'Jenis standar tidak valid',
         ]);
 
         // Check unique kode_unit per skema
-        if ($request->filled('kode_unit') && $request->filled('id_skemakkni')) {
-            $exists = UnitKompetensi::where('kode_unit', $request->kode_unit)
-                ->where('id_skemakkni', $request->id_skemakkni)
+        if (!empty($requestData['kode_unit']) && !empty($requestData['id_skemakkni'])) {
+            $exists = UnitKompetensi::where('kode_unit', $requestData['kode_unit'])
+                ->where('id_skemakkni', $requestData['id_skemakkni'])
                 ->exists();
 
             if ($exists) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Kode unit sudah ada dalam skema ini',
-                ], 422);
+                    'message' => 'Maaf Unit Kompetensi dengan Kode tersebut Sudah Ada',
+                ], 409);
             }
         }
 
         if ($validator->fails()) {
+            \Log::info('Unit Kompetensi Validation Failed', [
+                'request' => $request->all(),
+                'mapped_data' => $requestData,
+                'errors' => $validator->errors()->toArray()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
@@ -147,14 +166,18 @@ class UnitKompetensiController extends Controller
         }
 
         try {
+            DB::beginTransaction();
+
             $unit = UnitKompetensi::create([
-                'kode_unit' => strip_tags(trim($request->kode_unit)),
-                'judul' => strip_tags(trim($request->judul)),
-                'judul_eng' => $request->filled('judul_eng') ? strip_tags(trim($request->judul_eng)) : null,
-                'id_skemakkni' => $request->id_skemakkni,
-                'id_skkni' => $request->filled('id_skkni') ? $request->id_skkni : null,
-                'jenis' => $request->filled('jenis') ? $request->jenis : 'SKKNI',
+                'kode_unit' => $requestData['kode_unit'],
+                'judul' => $requestData['judul'],
+                'judul_eng' => !empty($requestData['judul_eng']) ? $requestData['judul_eng'] : null,
+                'id_skemakkni' => $requestData['id_skemakkni'],
+                'id_skkni' => !empty($requestData['id_skkni']) ? $requestData['id_skkni'] : null,
+                'jenis' => !empty($requestData['jenis']) ? $requestData['jenis'] : 'SKKNI',
             ]);
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
@@ -163,10 +186,10 @@ class UnitKompetensiController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Terjadi kesalahan saat menyimpan unit kompetensi',
-                'error' => $e->getMessage(),
+                'message' => 'Gagal menyimpan data: ' . $e->getMessage(),
             ], 500);
         }
     }
@@ -183,7 +206,17 @@ class UnitKompetensiController extends Controller
     {
         $unit = UnitKompetensi::findOrFail($id);
 
-        $validator = Validator::make($request->all(), [
+        // Map frontend field names to backend field names
+        $requestData = [
+            'kode_unit' => $request->input('kodeunit') ?? $request->input('kode_unit'),
+            'judul' => $request->input('namaunit') ?? $request->input('judul'),
+            'judul_eng' => $request->input('namaunit_eng') ?? $request->input('judul_eng'),
+            'id_skemakkni' => $request->input('skemakknilsp') ?? $request->input('id_skemakkni'),
+            'id_skkni' => $request->input('id_skkni'),
+            'jenis' => $request->input('jenis'),
+        ];
+
+        $validator = Validator::make($requestData, [
             'kode_unit' => 'nullable|string|max:100',
             'judul' => 'nullable|string|max:255',
             'judul_eng' => 'nullable|string|max:255',
@@ -193,9 +226,9 @@ class UnitKompetensiController extends Controller
         ]);
 
         // Check unique kode_unit per skema (excluding current record)
-        if ($request->input('kode_unit') && $request->input('id_skemakkni')) {
-            $exists = UnitKompetensi::where('kode_unit', $request->input('kode_unit'))
-                ->where('id_skemakkni', $request->input('id_skemakkni'))
+        if (!empty($requestData['kode_unit']) && !empty($requestData['id_skemakkni'])) {
+            $exists = UnitKompetensi::where('kode_unit', $requestData['kode_unit'])
+                ->where('id_skemakkni', $requestData['id_skemakkni'])
                 ->where('id', '!=', $id)
                 ->exists();
 
@@ -216,13 +249,13 @@ class UnitKompetensiController extends Controller
         }
 
         try {
-            // Update fields (use input() for FormData compatibility)
+            // Update fields with mapped data
             $updateData = [];
             $fields = ['kode_unit', 'judul', 'judul_eng', 'id_skemakkni', 'id_skkni', 'jenis'];
 
             foreach ($fields as $field) {
-                if ($request->input($field) !== null) {
-                    $value = $request->input($field);
+                if ($requestData[$field] !== null) {
+                    $value = $requestData[$field];
                     if (in_array($field, ['kode_unit', 'judul', 'judul_eng'])) {
                         $value = strip_tags(trim($value));
                     }
@@ -311,6 +344,78 @@ class UnitKompetensiController extends Controller
             'data' => [
                 'skema' => $skema,
                 'unit_kompetensi' => $units,
+            ],
+        ]);
+    }
+
+    /**
+     * Get statistics for unit kompetensi
+     * GET /api/v1/admin/unit-kompetensi/{id}/statistics
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function statistics($id)
+    {
+        $unit = UnitKompetensi::with(['elemenKompetensi'])->find($id);
+
+        if (!$unit) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unit Kompetensi tidak ditemukan',
+            ], 404);
+        }
+
+        $elemenCount = $unit->elemenKompetensi->count();
+        $kukCount = 0;
+
+        foreach ($unit->elemenKompetensi as $elemen) {
+            $kukCount += $elemen->kriteriaUnjukkerja()->count();
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'unit_id' => $unit->id,
+                'kode_unit' => $unit->kode_unit,
+                'judul' => $unit->judul,
+                'jumlah_elemen' => $elemenCount,
+                'jumlah_kuk' => $kukCount,
+                'bisa_dihapus' => $elemenCount === 0,
+            ],
+        ]);
+    }
+
+    /**
+     * Check duplicate unit kompetensi
+     * GET /api/v1/admin/unit-kompetensi/check-duplicate
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function checkDuplicate(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'kode' => 'required|string',
+            'skema' => 'required|integer',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $exists = UnitKompetensi::where('kode_unit', $request->kode)
+            ->where('id_skemakkni', $request->skema)
+            ->exists();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'is_duplicate' => $exists,
             ],
         ]);
     }

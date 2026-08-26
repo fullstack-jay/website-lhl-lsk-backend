@@ -371,9 +371,23 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
     // TUK routes (admin only)
     Route::prefix('tuk')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\TukController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\TukController::class, 'statistics']);
         Route::get('/options', [\App\Http\Controllers\Api\TukController::class, 'options']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\TukController::class, 'show']);
+        Route::get('/{skemaId}/persyaratan', [\App\Http\Controllers\Api\TukController::class, 'persyaratanBySkema']);
         Route::post('/', [\App\Http\Controllers\Api\TukController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\Api\TukController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\TukController::class, 'destroy']);
+    });
+
+    // Persyaratan TUK routes (admin only)
+    Route::prefix('persyaratan-tuk')->group(function () {
+        Route::get('/{skemaId}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'index']);
+        Route::get('/detail/{id}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'store']);
+        Route::post('/batch', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'batchStore']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'update']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'destroy']);
     });
 });

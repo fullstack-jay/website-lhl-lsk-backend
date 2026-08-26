@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Tuk extends Model
@@ -38,11 +39,19 @@ class Tuk extends Model
     ];
 
     /**
-     * Relationship to DataWilayah
+     * Relationship to DataWilayah (Kecamatan)
      */
-    public function wilayah()
+    public function wilayah(): BelongsTo
     {
         return $this->belongsTo(DataWilayah::class, 'id_wilayah', 'id_wil');
+    }
+
+    /**
+     * Relationship to SkemaKkni (SKKNI)
+     */
+    public function skema(): BelongsTo
+    {
+        return $this->belongsTo(SkemaKkni::class, 'id_skkni');
     }
 
     /**
@@ -96,17 +105,65 @@ class Tuk extends Model
     /**
      * Check if lisensi is active
      */
-    public function isLisensiActive()
+    public function getLisensiActiveAttribute()
     {
         return $this->masa_berlaku && $this->masa_berlaku >= now()->startOfDay();
     }
 
     /**
-     * Scope for active TUK
+     * Get status lisensi label
+     */
+    public function getStatusLisensiAttribute()
+    {
+        if (!$this->masa_berlaku) {
+            return 'not_specified';
+        }
+
+        return $this->lisensi_active ? 'active' : 'expired';
+    }
+
+    /**
+     * Get sisa hari masa berlaku
+     */
+    public function getSisaHariAttribute()
+    {
+        if (!$this->masa_berlaku) {
+            return null;
+        }
+
+        return now()->startOfDay()->diffInDays($this->masa_berlaku, false);
+    }
+
+    /**
+     * Get jumlah jadwal yang menggunakan TUK ini
+     */
+    public function getJumlahJadwalAttribute()
+    {
+        return $this->jadwalAsesmen()->count();
+    }
+
+    /**
+     * Check if TUK can be deleted (not used in any jadwal)
+     */
+    public function canBeDeleted()
+    {
+        return $this->jumlah_jadwal == 0;
+    }
+
+    /**
+     * Scope for active TUK (lisensi masih berlaku)
      */
     public function scopeActive($query)
     {
         return $query->where('masa_berlaku', '>=', now()->startOfDay());
+    }
+
+    /**
+     * Scope for expired TUK
+     */
+    public function scopeExpired($query)
+    {
+        return $query->where('masa_berlaku', '<', now()->startOfDay());
     }
 
     /**
@@ -116,8 +173,33 @@ class Tuk extends Model
     {
         if ($search) {
             return $query->where('nama', 'like', '%' . $search . '%')
-                ->orWhere('kode_tuk', 'like', '%' . $search . '%');
+                ->orWhere('kode_tuk', 'like', '%' . $search . '%')
+                ->orWhere('penanggungjawab', 'like', '%' . $search . '%');
         }
         return $query;
+    }
+
+    /**
+     * Scope by jenis TUK
+     */
+    public function scopeByJenis($query, $jenisTuk)
+    {
+        return $query->where('jenis_tuk', $jenisTuk);
+    }
+
+    /**
+     * Scope by LSP induk
+     */
+    public function scopeByLsp($query, $lspId)
+    {
+        return $query->where('lsp_induk', $lspId);
+    }
+
+    /**
+     * Scope by SKKNI
+     */
+    public function scopeBySkkni($query, $skkniId)
+    {
+        return $query->where('id_skkni', $skkniId);
     }
 }

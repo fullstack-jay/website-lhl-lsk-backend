@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ElemenKompetensi;
 use App\Models\UnitKompetensi;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class ElemenKompetensiController extends Controller
@@ -221,31 +222,47 @@ class ElemenKompetensiController extends Controller
      * Delete elemen kompetensi (Admin)
      * DELETE /api/v1/admin/elemen-kompetensi/{id}
      *
+     * Per dokumentasi: hapus elemen juga menghapus (cascade) seluruh
+     * kriteria unjuk kerja di bawahnya.
+     *
      * @param int $id
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy($id)
     {
         try {
-            $elemen = ElemenKompetensi::findOrFail($id);
+            DB::beginTransaction();
 
-            // Check if there are related data
-            if ($elemen->kriteriaUnjukkerja()->count() > 0) {
+            $elemen = ElemenKompetensi::find($id);
+
+            // Maaf Elemen Unit Kompetensi dengan tersebut Tidak Ditemukan
+            if (!$elemen) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tidak dapat menghapus elemen yang masih memiliki kriteria unjuk kerja',
-                ], 400);
+                    'message' => 'Maaf Elemen Unit Kompetensi dengan tersebut Tidak Ditemukan',
+                ], 404);
             }
 
-            // Delete record
+            // Hitung KUK sebelum dihapus (untuk informasi response)
+            $kukCount = $elemen->kriteriaUnjukkerja()->count();
+
+            // Cascade delete: KUK dulu, baru elemennya
+            $elemen->kriteriaUnjukkerja()->delete();
             $elemen->delete();
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Elemen kompetensi berhasil dihapus',
+                'message' => 'Anda Telah Berhasil Menghapus Data Elemen Unit Kompetensi Sertifikasi',
+                'data' => [
+                    'deleted_kuk_count' => $kukCount,
+                ],
             ]);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat menghapus elemen kompetensi',

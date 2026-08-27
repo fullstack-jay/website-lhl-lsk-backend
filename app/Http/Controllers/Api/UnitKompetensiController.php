@@ -292,25 +292,42 @@ class UnitKompetensiController extends Controller
     public function destroy($id)
     {
         try {
-            $unit = UnitKompetensi::findOrFail($id);
+            DB::beginTransaction();
 
-            // Check if there are related data
-            if ($unit->elemenKompetensi()->count() > 0) {
+            $unit = UnitKompetensi::find($id);
+
+            // Maaf Unit Kompetensi dengan tersebut Tidak Ditemukan
+            if (!$unit) {
+                DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Tidak dapat menghapus unit yang masih memiliki elemen kompetensi',
-                ], 400);
+                    'message' => 'Maaf Unit Kompetensi dengan tersebut Tidak Ditemukan',
+                ], 404);
             }
 
-            // Delete record
+            // Hitung data sebelum dihapus (untuk informasi response)
+            $elemenIds = $unit->elemenKompetensi()->pluck('id');
+            $elemenCount = $elemenIds->count();
+            $kukCount = \App\Models\KriteriaUnjukkerja::whereIn('id_elemenkompetensi', $elemenIds)->count();
+
+            // Cascade delete: KUK -> Elemen -> Unit
+            \App\Models\KriteriaUnjukkerja::whereIn('id_elemenkompetensi', $elemenIds)->delete();
+            $unit->elemenKompetensi()->delete();
             $unit->delete();
+
+            DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Unit kompetensi berhasil dihapus',
+                'message' => 'Anda Telah Berhasil Menghapus Data Unit Kompetensi Sertifikasi',
+                'data' => [
+                    'deleted_elemen_count' => $elemenCount,
+                    'deleted_kuk_count' => $kukCount,
+                ],
             ]);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat menghapus unit kompetensi',

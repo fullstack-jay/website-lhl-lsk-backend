@@ -150,6 +150,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/mapa1a', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa1a']);
         Route::delete('/mapa1a/{profil}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa1a']);
         Route::post('/mapa1b', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa1b']);
+        Route::post('/mapa1c', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa1c']);
         Route::post('/mapa2', [\App\Http\Controllers\Api\MapaController::class, 'storeMapa2']);
     });
 
@@ -298,6 +299,7 @@ Route::prefix('skema')->group(function () {
     // MAPA routes
     Route::get('/{id}/mapa1a/{profil?}', [\App\Http\Controllers\Api\MapaController::class, 'showMapa1a']);
     Route::get('/{id}/mapa1b', [\App\Http\Controllers\Api\MapaController::class, 'showMapa1b']);
+    Route::get('/{id}/mapa1c/{profil?}', [\App\Http\Controllers\Api\MapaController::class, 'showMapa1c']);
     Route::get('/{id}/mapa2', [\App\Http\Controllers\Api\MapaController::class, 'showMapa2']);
 
     // Helper routes

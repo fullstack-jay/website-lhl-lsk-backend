@@ -130,6 +130,13 @@ class JadwalAsesmenController extends Controller
      */
     public function store(Request $request)
     {
+        // Normalisasi: nilai 0 dari dropdown frontend berarti "tidak dipilih" -> null
+        foreach (['pemberi_anggaran', 'sumber_anggaran', 'pelaksanaan_uji', 'id_event'] as $field) {
+            if ($request->input($field) == 0 || $request->input($field) === '') {
+                $request->merge([$field => null]);
+            }
+        }
+
         $validator = Validator::make($request->all(), [
             'nama_kegiatan' => 'required',
             'tahun' => 'required|integer',
@@ -150,6 +157,11 @@ class JadwalAsesmenController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::info('Jadwal Asesmen Validation Failed', [
+                'request' => $request->all(),
+                'files' => array_keys($request->allFiles()),
+                'errors' => $validator->errors()->toArray()
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',
@@ -200,6 +212,13 @@ class JadwalAsesmenController extends Controller
                 'success' => false,
                 'message' => 'Jadwal asesmen tidak ditemukan',
             ], 404);
+        }
+
+        // Normalisasi: nilai 0 dari dropdown frontend berarti "tidak dipilih" -> null
+        foreach (['pemberi_anggaran', 'sumber_anggaran', 'pelaksanaan_uji', 'id_event'] as $field) {
+            if ($request->input($field) == 0 || $request->input($field) === '') {
+                $request->merge([$field => null]);
+            }
         }
 
         $validator = Validator::make($request->all(), [

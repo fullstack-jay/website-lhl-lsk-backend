@@ -96,16 +96,22 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::prefix('unit-kompetensi')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'store']);
+        // Specific routes must come before parameterized routes
+        Route::get('/check-duplicate', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'checkDuplicate']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'show']);
         Route::put('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'destroy']);
+        Route::get('/{id}/statistics', [\App\Http\Controllers\Api\UnitKompetensiController::class, 'statistics']);
     });
 
     // Elemen Kompetensi routes
     Route::prefix('elemen-kompetensi')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'store']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'show']);
         Route::put('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'destroy']);
+        Route::get('/unit/{unitId}', [\App\Http\Controllers\Api\ElemenKompetensiController::class, 'byUnit']);
     });
 
     // Kriteria Unjuk Kerja routes
@@ -113,8 +119,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'store']);
         Route::post('/batch', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'batchStore']);
+        Route::get('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'show']);
         Route::put('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'destroy']);
+        Route::get('/elemen/{elemenId}', [\App\Http\Controllers\Api\KriteriaUnjukkerjaController::class, 'byElemen']);
     });
 
     // Persyaratan Peserta routes
@@ -389,5 +397,17 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/batch', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'batchStore']);
         Route::put('/{id}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\PersyaratanTukController::class, 'destroy']);
+    });
+
+    // Peserta/Asesi routes (admin only)
+    Route::prefix('peserta')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\AsesiController::class, 'index']);
+        Route::get('/statistics', [\App\Http\Controllers\Api\AsesiController::class, 'statistics']);
+        Route::get('/{noPendaftaran}', [\App\Http\Controllers\Api\AsesiController::class, 'show']);
+        Route::post('/', [\App\Http\Controllers\Api\AsesiController::class, 'store']);
+        Route::put('/{noPendaftaran}', [\App\Http\Controllers\Api\AsesiController::class, 'update']);
+        Route::delete('/{noPendaftaran}', [\App\Http\Controllers\Api\AsesiController::class, 'destroy']);
+        Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiController::class, 'updateBlokir']);
+        Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi']);
     });
 });

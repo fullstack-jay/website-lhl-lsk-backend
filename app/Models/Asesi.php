@@ -119,6 +119,15 @@ class Asesi extends Model
     }
 
     /**
+     * Pendaftaran skema peserta — baris asesi_asesmen milik no_pendaftaran ini.
+     * 1 peserta bisa punya banyak pendaftaran (banyak skema).
+     */
+    public function pendaftaran(): HasMany
+    {
+        return $this->hasMany(AsesiAsesmen::class, 'id_asesi', 'no_pendaftaran');
+    }
+
+    /**
      * Get full name
      */
     public function getFullNameAttribute()

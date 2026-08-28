@@ -113,31 +113,34 @@ class PengujiController extends Controller
         $portofolioTahunIni = 0;
         $skemaTahunIni = [];
 
+        $portofolioList = [];
         foreach ($asesor->jadwalAsesmen as $jadwal) {
             $totalPortofolio++;
             if ($jadwal->tgl_asesmen && str_starts_with((string) $jadwal->tgl_asesmen, (string) $tahun)) {
                 $portofolioTahunIni++;
-                if ($jadwal->id_skemakkni && !isset($skemaTahunIni[$jadwal->id_skemakkni])) {
-                    $skemaTahunIni[$jadwal->id_skemakkni] = [
-                        'id_skema' => $jadwal->id_skemakkni,
-                        'judul' => null,
-                        'kode_skema' => null,
-                        'no_surattugas' => $jadwal->no_surattugas,
-                        'tgl_asesmen' => optional($jadwal->tgl_asesmen)->format('Y-m-d'),
-                    ];
-                }
+            }
+            if ($jadwal->id_skemakkni) {
+                $portofolioList[] = [
+                    'id_skema' => $jadwal->id_skemakkni,
+                    'judul' => null,
+                    'kode_skema' => null,
+                    'no_surattugas' => $jadwal->no_surattugas,
+                    'tgl_asesmen' => optional($jadwal->tgl_asesmen)->format('Y-m-d'),
+                ];
             }
         }
 
-        // Lengkapi judul skema tahun ini (satu query tambahan bila ada)
-        if (!empty($skemaTahunIni)) {
-            $skemas = SkemaKkni::whereIn('id', array_keys($skemaTahunIni))->get(['id', 'judul', 'kode_skema']);
-            foreach ($skemas as $s) {
-                if (isset($skemaTahunIni[$s->id])) {
-                    $skemaTahunIni[$s->id]['judul'] = $s->judul;
-                    $skemaTahunIni[$s->id]['kode_skema'] = $s->kode_skema;
+        // Lengkapi judul skema portofolio
+        if (!empty($portofolioList)) {
+            $skemaIds = array_unique(array_column($portofolioList, 'id_skema'));
+            $skemas = SkemaKkni::whereIn('id', $skemaIds)->get(['id', 'judul', 'kode_skema'])->keyBy('id');
+            foreach ($portofolioList as &$item) {
+                if (isset($skemas[$item['id_skema']])) {
+                    $item['judul'] = $skemas[$item['id_skema']]->judul;
+                    $item['kode_skema'] = $skemas[$item['id_skema']]->kode_skema;
                 }
             }
+            unset($item);
         }
 
         // 6. Jumlah penetapan skema (distinct id_skemakkni)
@@ -180,7 +183,8 @@ class PengujiController extends Controller
             'portofolio' => [
                 'total' => $totalPortofolio,                  // $ikutasesmen
                 'tahun_ini' => $portofolioTahunIni,           // $ikutasesmen2
-                'skema_tahun_ini' => array_values($skemaTahunIni),
+                'skema_tahun_ini' => array_values($portofolioList),
+                'riwayat' => array_values($portofolioList),
             ],
             'penugasan_skema_count' => $penugasanSkemaCount,
 

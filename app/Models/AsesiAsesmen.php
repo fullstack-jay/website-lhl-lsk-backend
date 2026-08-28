@@ -11,7 +11,12 @@ class AsesiAsesmen extends Model
 
     protected $primaryKey = 'id';
 
-    public $timestamps = true;
+    /**
+     * Tabel asesi_asesmen tidak punya kolom updated_at/created_at Laravel
+     * (hanya kolom lama: tgl_daftar, waktu, dst) — timestamps dimatikan
+     * agar create/update tidak menyisipkan kolom yang tidak ada.
+     */
+    public $timestamps = false;
 
     protected $fillable = [
         'id_asesi',

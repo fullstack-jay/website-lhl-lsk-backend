@@ -433,4 +433,14 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiController::class, 'updateBlokir']);
         Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi']);
     });
+
+    // Calon Peserta Baru (asesibaru) routes — sesuai docs/BACKEND_CALONPESERTABARU.md
+    Route::prefix('asesi-baru')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\AsesiBaruController::class, 'index']);
+        Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiBaruController::class, 'updateBlokir']);
+        Route::get('/{id}/kontak', [\App\Http\Controllers\Api\AsesiBaruController::class, 'kontak']);
+        Route::post('/{id}/sms', [\App\Http\Controllers\Api\AsesiBaruController::class, 'kirimSms']);
+        Route::delete('/{id}', [\App\Http\Controllers\Api\AsesiBaruController::class, 'destroy']);
+        Route::delete('/{id}/pendaftaran/{idSkema}', [\App\Http\Controllers\Api\AsesiBaruController::class, 'destroyPendaftaran']);
+    });
 });

@@ -20,6 +20,8 @@ class Asesor extends Model
         'gelar_blk',
         'inisial',
         'jenis_kelamin',
+        'agama',
+        'status_perkawinan',
         'tmp_lahir',
         'tgl_lahir',
         'usia',
@@ -46,6 +48,7 @@ class Asesor extends Model
         'fax_kantor',
         'email_kantor',
         'no_lisensi',
+        'tanggal_lisensi',
         'no_serisertifikat',
         'masaberlaku_lisensi',
         'foto_sertifikat',
@@ -55,6 +58,7 @@ class Asesor extends Model
 
     protected $casts = [
         'tgl_lahir' => 'date',
+        'tanggal_lisensi' => 'date',
         'masaberlaku_lisensi' => 'date',
         'usia' => 'integer',
         'tahun_lulus' => 'integer',

@@ -120,12 +120,40 @@ class PengujiController extends Controller
                 $portofolioTahunIni++;
             }
             if ($jadwal->id_skemakkni) {
+                $lokasi = $jadwal->tempat_asesmen;
+                if ($jadwal->tempat_asesmen) {
+                    try {
+                        if (is_numeric($jadwal->tempat_asesmen)) {
+                            $tuk = DB::table('tuk')->where('id', $jadwal->tempat_asesmen)->first();
+                            if ($tuk) {
+                                $lokasi = $tuk->nama;
+                            }
+                        }
+                    } catch (\Throwable $e) {}
+                }
+
+                $jumlahAsesi = 0;
+                try {
+                    $jumlahAsesi = DB::table('asesi_asesmen')->where('id_jadwal', $jadwal->id)->count();
+                } catch (\Throwable $e) {}
+
+                $jumlahPenguji = 1;
+                try {
+                    $jumlahPenguji = DB::table('jadwal_asesor')->where('id_jadwal', $jadwal->id)->count() ?: 1;
+                } catch (\Throwable $e) {}
+
                 $portofolioList[] = [
+                    'id_jadwal' => $jadwal->id,
                     'id_skema' => $jadwal->id_skemakkni,
                     'judul' => null,
                     'kode_skema' => null,
                     'no_surattugas' => $jadwal->no_surattugas,
                     'tgl_asesmen' => optional($jadwal->tgl_asesmen)->format('Y-m-d'),
+                    'status' => $jadwal->status ?: 'Selesai',
+                    'tempat_asesmen' => $jadwal->tempat_asesmen,
+                    'lokasi' => $lokasi,
+                    'jumlah_asesi' => $jumlahAsesi,
+                    'jumlah_penguji' => $jumlahPenguji,
                 ];
             }
         }
@@ -164,6 +192,7 @@ class PengujiController extends Controller
             'nama' => $asesor->nama,
             'no_induk' => $asesor->no_induk,                 // username login portal /asesor/
             'no_lisensi' => $asesor->no_lisensi,
+            'no_ktp' => $asesor->no_ktp,
             'email' => $asesor->email,
             'no_hp' => $asesor->no_hp,
             'foto_url' => $asesor->foto ? asset(self::UPLOAD_DIR . '/' . $asesor->foto) : null,
@@ -219,7 +248,7 @@ class PengujiController extends Controller
      */
     public function show($id)
     {
-        $asesor = Asesor::with('jadwalAsesmen')->find($id);
+        $asesor = Asesor::with(['jadwalAsesmen'])->find($id);
         if (!$asesor) {
             return response()->json([
                 'success' => false,
@@ -227,9 +256,63 @@ class PengujiController extends Controller
             ], 404);
         }
 
+        $kartu = $this->transformKartuPenguji($asesor, now()->year);
+
+        // Hitung total asesi diases
+        $totalAsesiDiases = 0;
+        try {
+            $jadwalIds = $asesor->jadwalAsesmen->pluck('id')->toArray();
+            if (!empty($jadwalIds)) {
+                $totalAsesiDiases = DB::table('asesi_asesmen')
+                    ->whereIn('id_jadwal', $jadwalIds)
+                    ->count();
+            }
+        } catch (\Throwable $e) {
+            $totalAsesiDiases = 0;
+        }
+
+        // Ambil label pendidikan & pekerjaan
+        $pendidikanLabel = $asesor->pendidikan_terakhir;
+        if ($asesor->pendidikan_terakhir) {
+            try {
+                if (is_numeric($asesor->pendidikan_terakhir)) {
+                    $val = DB::table('pendidikan')->where('id', $asesor->pendidikan_terakhir)->value('jenjang_pendidikan');
+                    if ($val) $pendidikanLabel = $val;
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $pekerjaanLabel = $asesor->pekerjaan;
+        if ($asesor->pekerjaan) {
+            try {
+                if (is_numeric($asesor->pekerjaan)) {
+                    $val = DB::table('pekerjaan')->where('id', $asesor->pekerjaan)->value('pekerjaan');
+                    if ($val) $pekerjaanLabel = $val;
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        $data = array_merge($asesor->toArray(), $kartu, [
+            'no_ktp' => $asesor->no_ktp,
+            'tmp_lahir' => $asesor->tmp_lahir,
+            'tgl_lahir' => optional($asesor->tgl_lahir)->format('Y-m-d'),
+            'tanggal_lisensi' => optional($asesor->tanggal_lisensi)->format('Y-m-d'),
+            'masaberlaku_lisensi' => optional($asesor->masaberlaku_lisensi)->format('Y-m-d'),
+            'sisa_hari_lisensi' => $asesor->sisa_hari_lisensi,
+            'status_lisensi' => $asesor->status_lisensi,
+            'warna_kartu' => $asesor->warna_kartu,
+            'agama' => $asesor->agama,
+            'status_perkawinan' => $asesor->status_perkawinan,
+            'pekerjaan' => $pekerjaanLabel,
+            'pendidikan_terakhir' => $pendidikanLabel,
+            'institusi_asal' => $asesor->institusi_asal,
+            'total_asesi_diases' => $totalAsesiDiases,
+            'foto_sertifikat_url' => $asesor->foto_sertifikat ? asset(self::UPLOAD_DIR . '/' . $asesor->foto_sertifikat) : null,
+        ]);
+
         return response()->json([
             'success' => true,
-            'data' => $this->transformKartuPenguji($asesor, now()->year),
+            'data' => $data,
         ]);
     }
 
@@ -259,12 +342,16 @@ class PengujiController extends Controller
             'gelar_depan' => 'nullable|string|max:50',
             'gelar_blk' => 'nullable|string|max:100',
             'jenis_kelamin' => 'nullable|in:L,P',
+            'agama' => 'nullable|string|max:50',
+            'status_perkawinan' => 'nullable|string|max:50',
             'tmp_lahir' => 'nullable|string|max:255',
             'tgl_lahir' => 'nullable|date',
             'email' => 'nullable|email|max:255',
             'no_hp' => 'nullable|string|max:30',
-            'no_induk' => 'nullable|string|max:100|unique:users,no_induk',
+            // No. Induk opsional saja — tidak wajib, tanpa cek duplikat
+            'no_induk' => 'nullable|string|max:100',
             'no_lisensi' => 'nullable|string|max:100',
+            'tanggal_lisensi' => 'nullable|date',
             'masaberlaku_lisensi' => 'nullable|date',
             'pendidikan_terakhir' => 'nullable|string|max:10',
             'bid_keahlian' => 'nullable|string|max:255',
@@ -278,7 +365,6 @@ class PengujiController extends Controller
             'no_ktp.required' => 'NIK (No. KTP) wajib diisi',
             'no_ktp.unique' => 'NIK tersebut sudah terdaftar',
             'nama.required' => 'Nama wajib diisi',
-            'no_induk.unique' => 'No. Induk/Register tersebut sudah digunakan',
         ]);
 
         if ($validator->fails()) {
@@ -303,13 +389,18 @@ class PengujiController extends Controller
                 'gelar_depan' => $request->gelar_depan,
                 'gelar_blk' => $request->gelar_blk,
                 'jenis_kelamin' => $request->jenis_kelamin,
+                'agama' => $request->agama,
+                'status_perkawinan' => $request->status_perkawinan,
                 'tmp_lahir' => $request->tmp_lahir,
                 'tgl_lahir' => $request->tgl_lahir,
                 'email' => $request->email,
                 'no_hp' => $request->no_hp,
                 'no_induk' => $request->no_induk,
                 'no_lisensi' => $request->no_lisensi,
+                'tanggal_lisensi' => $request->tanggal_lisensi,
                 'masaberlaku_lisensi' => $request->masaberlaku_lisensi,
+                'institusi_asal' => $request->institusi_asal,
+                'pekerjaan' => $request->pekerjaan,
                 'pendidikan_terakhir' => $request->pendidikan_terakhir,
                 'bid_keahlian' => $request->bid_keahlian,
                 'alamat' => $request->alamat,
@@ -329,6 +420,23 @@ class PengujiController extends Controller
             if ($asesor->tgl_lahir) {
                 $asesor->usia = $asesor->tgl_lahir->age;          // usia = kalkulasi sistem
             }
+
+            // Upload foto bila ada
+            if ($request->hasFile('foto')) {
+                $fileFoto = $request->file('foto');
+                $fnFoto = time() . '.' . md5($fileFoto->getClientOriginalName()) . '.' . $fileFoto->getClientOriginalExtension();
+                $fileFoto->move(public_path(self::UPLOAD_DIR), $fnFoto);
+                $asesor->foto = $fnFoto;
+            }
+
+            // Upload sertifikat lisensi bila ada
+            if ($request->hasFile('foto_sertifikat')) {
+                $fileSert = $request->file('foto_sertifikat');
+                $fnSert = time() . '.' . md5($fileSert->getClientOriginalName()) . '.' . $fileSert->getClientOriginalExtension();
+                $fileSert->move(public_path(self::UPLOAD_DIR), $fnSert);
+                $asesor->foto_sertifikat = $fnSert;
+            }
+
             $asesor->save();
 
             // 2. Mirror akun ke tabel users (level=penguji, username=no_ktp)
@@ -527,6 +635,8 @@ class PengujiController extends Controller
             'gelar_depan' => 'nullable|string|max:50',
             'gelar_blk' => 'nullable|string|max:100',
             'jenis_kelamin' => 'nullable|in:L,P',
+            'agama' => 'nullable|string|max:50',
+            'status_perkawinan' => 'nullable|string|max:50',
             'tmp_lahir' => 'nullable|string|max:255',
             'tgl_lahir' => 'nullable|date',
             'email' => 'nullable|email|max:255',
@@ -551,6 +661,7 @@ class PengujiController extends Controller
             'fax_kantor' => 'nullable|string|max:30',
             'email_kantor' => 'nullable|email|max:255',
             'no_lisensi' => 'nullable|string|max:100',
+            'tanggal_lisensi' => 'nullable|date',
             'no_serisertifikat' => 'nullable|string|max:100',
             'masaberlaku_lisensi' => 'nullable|date',
             'facebook' => 'nullable|string|max:255',
@@ -591,11 +702,11 @@ class PengujiController extends Controller
             }
 
             // Update field teks/tanggal yang dikirim saja
-            $textFields = ['nama','gelar_depan','gelar_blk','jenis_kelamin','tmp_lahir','tgl_lahir',
+            $textFields = ['nama','gelar_depan','gelar_blk','jenis_kelamin','agama','status_perkawinan','tmp_lahir','tgl_lahir',
                 'email','no_hp','no_induk','no_ktp','pendidikan_terakhir','tahun_lulus',
                 'bid_keahlian','pekerjaan','kebangsaan','alamat','RT','RW','kelurahan',
                 'kecamatan','kota','propinsi','kodepos','institusi_asal','telp_kantor',
-                'fax_kantor','email_kantor','no_lisensi','no_serisertifikat',
+                'fax_kantor','email_kantor','no_lisensi','tanggal_lisensi','no_serisertifikat',
                 'masaberlaku_lisensi','facebook','aktif'];
             foreach ($textFields as $field) {
                 if ($request->has($field)) {
@@ -655,6 +766,87 @@ class PengujiController extends Controller
     // ════════════════════════════════════════════════════════════════
 
     /**
+     * GET /api/v1/admin/penguji/{id}/penugasan-skema/halaman
+     *
+     * Render seluruh data halaman "Penetapan Skema Penguji" sekaligus
+     * (padanan Render View native, satu endpoint untuk membangun halaman):
+     * - Kartu profil penguji (konteks header, warna lisensi 🔴🟡🟢)
+     * - Tabel penugasan existing (ORDER BY id_skemakkni ASC, idem native)
+     * - Dropdown skema aktif (`skema_kkni WHERE aktif='Y'`) + flag belum_ditugaskan
+     *   (padanan Common Query #5)
+     * - Badge jumlah skema DISTINCT (Common Query #2)
+     */
+    public function halamanPenugasanSkema($id)
+    {
+        // Guard idas tidak valid (perbaikan atas native yang tetap render kartu kosong)
+        $asesor = Asesor::find($id);
+        if (!$asesor) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Maaf Penguji tersebut Tidak Ditemukan',
+            ], 404);
+        }
+
+        // Kartu profil penguji (reuse transformer menu Penguji — warna lisensi dll)
+        $kartu = $this->transformKartuPenguji($asesor, now()->year);
+
+        // Tabel penugasan existing — ORDER BY id_skemakkni ASC (idem native
+        // "pengelompokan visual per skema"), lalu tanggal DESC utk SK terbaru dulu
+        $list = AsesorTugasskema::where('id_asesor', $id)
+            ->join('skema_kkni', 'skema_kkni.id', '=', 'asesor_tugasskema.id_skemakkni')
+            ->orderBy('asesor_tugasskema.id_skemakkni', 'asc')
+            ->orderByDesc('asesor_tugasskema.tanggal_sk')
+            ->get([
+                'asesor_tugasskema.id',
+                'asesor_tugasskema.id_skemakkni',
+                'asesor_tugasskema.no_sk',
+                'asesor_tugasskema.tanggal_sk',
+                'skema_kkni.kode_skema',
+                'skema_kkni.judul',
+                'skema_kkni.aktif',
+            ]);
+
+        // Dropdown skema aktif — WHERE aktif='Y' ORDER BY judul ASC (idem native).
+        // Skema non-aktif tidak bisa dipilih baru, tapi penugasan existing ke
+        // skema non-aktif tetap tampil di tabel (JOIN tanpa filter).
+        $skemaDitugaskan = AsesorTugasskema::where('id_asesor', $id)
+            ->pluck('id_skemakkni')
+            ->unique();
+
+        $dropdown = SkemaKkni::where('aktif', 'Y')
+            ->orderBy('judul', 'asc')
+            ->get(['id', 'kode_skema', 'judul'])
+            ->map(fn ($s) => [
+                'value' => $s->id,
+                'label' => "{$s->kode_skema} - {$s->judul}",
+                'belum_ditugaskan' => !$skemaDitugaskan->contains($s->id),
+            ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                // Kartu konteks header (warna lisensi, badge, portofolio)
+                'penguji' => $kartu,
+                'penetapan_skema_count' => $skemaDitugaskan->count(),   // badge kartu
+
+                // Tabel penugasan existing
+                'penugasan' => $list->map(fn ($r) => [
+                    'id' => $r->id,
+                    'id_skemakkni' => $r->id_skemakkni,
+                    'no_sk' => $r->no_sk,
+                    'tanggal_sk' => $r->tanggal_sk ? date('Y-m-d', strtotime($r->tanggal_sk)) : null,
+                    'kode_skema' => $r->kode_skema,
+                    'judul' => $r->judul,
+                    'skema_aktif' => $r->aktif === 'Y',   // badge "non-aktif" opsional
+                ]),
+
+                // Form tambah penugasan baru
+                'dropdown_skema' => $dropdown,
+            ],
+        ]);
+    }
+
+    /**
      * GET /api/v1/admin/penguji/{id}/penugasan-skema
      * Daftar penetapan skema milik penguji ini.
      */
@@ -670,6 +862,7 @@ class PengujiController extends Controller
 
         $list = AsesorTugasskema::where('id_asesor', $id)
             ->join('skema_kkni', 'skema_kkni.id', '=', 'asesor_tugasskema.id_skemakkni')
+            ->orderBy('asesor_tugasskema.id_skemakkni', 'asc')
             ->orderByDesc('asesor_tugasskema.tanggal_sk')
             ->get([
                 'asesor_tugasskema.id',
@@ -678,6 +871,8 @@ class PengujiController extends Controller
                 'asesor_tugasskema.tanggal_sk',
                 'skema_kkni.kode_skema',
                 'skema_kkni.judul',
+                'skema_kkni.jenjang',
+                'skema_kkni.jenis_skema',
             ]);
 
         return response()->json([
@@ -689,6 +884,8 @@ class PengujiController extends Controller
                 'tanggal_sk' => $r->tanggal_sk ? date('Y-m-d', strtotime($r->tanggal_sk)) : null,
                 'kode_skema' => $r->kode_skema,
                 'judul' => $r->judul,
+                'jenjang' => $r->jenjang,
+                'jenis_skema' => $r->jenis_skema,
             ]),
         ]);
     }

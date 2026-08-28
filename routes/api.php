@@ -175,6 +175,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
         Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\PengujiController::class, 'resetPassword']);
 
+        Route::get('/{id}/penugasan-skema/halaman', [\App\Http\Controllers\Api\PengujiController::class, 'halamanPenugasanSkema']);
         Route::get('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'indexPenugasanSkema']);
         Route::post('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'storePenugasanSkema']);
     });

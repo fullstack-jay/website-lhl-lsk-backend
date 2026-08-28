@@ -560,6 +560,17 @@ class AsesiController extends Controller
             // Delete from asesi_apl02 and asesi_apl02doc (if exists)
             // Add similar logic for other related tables
 
+            // Hapus juga akun login di tabel users (username = no_pendaftaran atau no_ktp,
+            // level peserta/user). Tanpa ini, NIK tetap "terdaftar" walau data peserta
+            // sudah dihapus — memblokir pendaftaran ulang dengan NIK yang sama.
+            \App\Models\User::where('level', 'user')
+                ->where(function ($q) use ($noPendaftaran, $asesi) {
+                    $q->where('username', $noPendaftaran)
+                      ->orWhere('username', $asesi->no_ktp)
+                      ->orWhere('no_ktp', $asesi->no_ktp);
+                })
+                ->delete();
+
             // Delete the asesi record
             $asesi->delete();
 

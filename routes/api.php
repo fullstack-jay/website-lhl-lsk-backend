@@ -157,6 +157,27 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // MAPA direct delete routes
     Route::delete('/mapa1b/{id}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa1b']);
     Route::delete('/mapa2/{id}', [\App\Http\Controllers\Api\MapaController::class, 'destroyMapa2']);
+
+    // Penguji (Asesor) routes — sesuai docs/BACKEND_PENGUJI.md
+    Route::prefix('penguji')->group(function () {
+        // Specific routes BEFORE parameterized {id}
+        Route::get('/statistics', [\App\Http\Controllers\Api\PengujiController::class, 'statistics']);
+
+        Route::get('/', [\App\Http\Controllers\Api\PengujiController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\PengujiController::class, 'store']);   // reserved: registrasi baru
+
+        Route::delete('/penugasan-skema/{id}', [\App\Http\Controllers\Api\PengujiController::class, 'destroyPenugasanSkema']);
+
+        Route::get('/{id}', [\App\Http\Controllers\Api\PengujiController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\PengujiController::class, 'update']);
+        Route::post('/{id}', [\App\Http\Controllers\Api\PengujiController::class, 'update']);  // FormData compatibility (_method=PUT)
+        Route::delete('/{id}', [\App\Http\Controllers\Api\PengujiController::class, 'destroy']);
+
+        Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\PengujiController::class, 'resetPassword']);
+
+        Route::get('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'indexPenugasanSkema']);
+        Route::post('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'storePenugasanSkema']);
+    });
 });
 
 /*

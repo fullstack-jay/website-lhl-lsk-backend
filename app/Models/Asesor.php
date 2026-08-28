@@ -133,4 +133,70 @@ class Asesor extends Model
         }
         return false;
     }
+
+    // ════════════════════════════════════════════════════════════════
+    // Logika modul Penguji (sesuai docs/BACKEND_PENGUJI.md)
+    // ════════════════════════════════════════════════════════════════
+
+    /** Ambang batas "segera kadaluarsa": 180 hari (6 bulan). */
+    public const BATAS_SEGERA_KADALUARSA = 180;
+
+    /**
+     * Sisa hari lisensi dari hari ini (negatif = sudah kedaluwarsa).
+     * Padanan $days_between di PHP Native.
+     */
+    public function getSisaHariLisensiAttribute(): ?int
+    {
+        if (!$this->masaberlaku_lisensi) {
+            return null; // guard NULL (strtotime(null) deprecated PHP 8.1+)
+        }
+        return now()->startOfDay()->diffInDays($this->masaberlaku_lisensi->copy()->startOfDay(), false);
+    }
+
+    /**
+     * Status lisensi: kadaluarsa / segera / aktif — padanan logika warna kartu.
+     * <0 → KADALUARSA (merah) · 0..179 → SEGERA (kuning) · >=180 → AKTIF (hijau)
+     */
+    public function getStatusLisensiAttribute(): string
+    {
+        $sisa = $this->sisa_hari_lisensi;
+        if ($sisa === null || $sisa < 0) return 'KADALUARSA';
+        if ($sisa < self::BATAS_SEGERA_KADALUARSA) return 'SEGERA';
+        return 'AKTIF';
+    }
+
+    /**
+     * Warna header kartu untuk frontend (padanan bg-red/bg-yellow/bg-green).
+     */
+    public function getWarnaKartuAttribute(): string
+    {
+        return match ($this->status_lisensi) {
+            'AKTIF' => 'green',
+            'SEGERA' => 'yellow',
+            default => 'red',
+        };
+    }
+
+    /**
+     * Cek kelengkapan dokumen pokok: foto, ktp, kk, ijazah, transkrip.
+     * Semua ada → lengkap=true; else listing yang kurang.
+     */
+    public function getKelengkapanDokumenAttribute(): array
+    {
+        $fields = ['foto', 'ktp', 'kk', 'ijazah', 'transkrip'];
+        $labels = [
+            'foto' => 'Foto', 'ktp' => 'KTP', 'kk' => 'KK',
+            'ijazah' => 'Ijazah', 'transkrip' => 'Transkrip',
+        ];
+        $kurang = [];
+        foreach ($fields as $f) {
+            if (empty($this->{$f})) {
+                $kurang[] = $labels[$f];
+            }
+        }
+        return [
+            'lengkap' => empty($kurang),
+            'kurang' => $kurang,
+        ];
+    }
 }

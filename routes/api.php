@@ -179,6 +179,21 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'indexPenugasanSkema']);
         Route::post('/{id}/penugasan-skema', [\App\Http\Controllers\Api\PengujiController::class, 'storePenugasanSkema']);
     });
+
+    // Komite Teknis routes — sesuai docs/BACKEND_KOMITETEKNIS.md
+    Route::prefix('komite')->group(function () {
+        Route::get('/statistics', [\App\Http\Controllers\Api\KomiteController::class, 'statistics']);
+
+        Route::get('/', [\App\Http\Controllers\Api\KomiteController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\KomiteController::class, 'store']);
+
+        Route::get('/{id}', [\App\Http\Controllers\Api\KomiteController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\KomiteController::class, 'update']);
+        Route::post('/{id}', [\App\Http\Controllers\Api\KomiteController::class, 'update']);  // FormData compatibility
+        Route::delete('/{id}', [\App\Http\Controllers\Api\KomiteController::class, 'destroy']);
+
+        Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\KomiteController::class, 'resetPassword']);
+    });
 });
 
 /*

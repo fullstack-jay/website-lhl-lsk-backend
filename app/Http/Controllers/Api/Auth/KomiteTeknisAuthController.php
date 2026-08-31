@@ -15,6 +15,10 @@ class KomiteTeknisAuthController extends ApiController
     /**
      * Login Komite Teknis
      * POST /api/v1/auth/komite-teknis/login
+     *
+     * Sesuai docs/BACKEND_KOMITETEKNIS.md: username bisa 3 hal (salah satu):
+     * no_ktp (NIK) ATAU no_hp ATAU no_induk. Session native menyimpan no_ktp
+     * → di API setara users.username.
      */
     public function login(Request $request)
     {
@@ -23,7 +27,7 @@ class KomiteTeknisAuthController extends ApiController
             'identifier' => 'required|string',
             'password' => 'required|string|min:4',
         ], [
-            'identifier.required' => 'Username atau No. Handphone wajib diisi',
+            'identifier.required' => 'NIK / No. Handphone / No. Induk wajib diisi',
             'password.required' => 'Password wajib diisi',
         ]);
 
@@ -38,17 +42,19 @@ class KomiteTeknisAuthController extends ApiController
         $identifier = $request->input('identifier');
         $password = $request->input('password');
 
-        // Find user by username or phone number
+        // 3 opsi identifier (idem native cek_login komite)
         $user = User::where(function ($query) use ($identifier) {
-            $query->where('username', $identifier)
-                  ->orWhere('no_telp', $identifier);
+            $query->where('username', $identifier)     // username = no_ktp
+                  ->orWhere('no_ktp', $identifier)
+                  ->orWhere('no_telp', $identifier)    // no_hp
+                  ->orWhere('no_induk', $identifier);  // No. Register
         })->active()->first();
 
         // Check if user exists
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Username atau No. Handphone tidak ditemukan',
+                'message' => 'NIK / No. Handphone / No. Induk tidak ditemukan',
             ], 401);
         }
 
@@ -76,7 +82,10 @@ class KomiteTeknisAuthController extends ApiController
             'message' => 'Login berhasil',
             'data' => [
                 'user' => [
+                    // identity = session native ($_SESSION['namauser'] = no_ktp)
+                    'identity' => $user->username,
                     'username' => $user->username,
+                    'no_ktp' => $user->no_ktp,
                     'nama_lengkap' => $user->nama_lengkap,
                     'email' => $user->email,
                     'no_hp' => $user->no_telp,

@@ -86,7 +86,6 @@ class PengujiAuthController extends ApiController
                     'identity' => $user->username,
                     'username' => $user->username,
                     'no_ktp' => $user->no_ktp,
-                    'no_induk' => $user->no_induk,
                     'nama_lengkap' => $user->nama_lengkap,
                     'email' => $user->email,
                     'no_hp' => $user->no_telp,

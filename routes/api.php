@@ -195,6 +195,34 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\KomiteController::class, 'resetPassword']);
     });
 
+    // Pengaturan Dokumen Pokok Peserta (devsyarat) routes — sesuai docs/BACKEND_DEVSYARAT.md
+    Route::prefix('devsyarat')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\DevSyaratController::class, 'index']);
+        Route::get('/aktif', [\App\Http\Controllers\Api\DevSyaratController::class, 'aktif']);
+        Route::get('/kelengkapan/{noPendaftaran}', [\App\Http\Controllers\Api\DevSyaratController::class, 'kelengkapan']);
+
+        // 4 handler toggle (konfigurasi-only — tanpa create/delete)
+        Route::put('/{id}/wajibkan', [\App\Http\Controllers\Api\DevSyaratController::class, 'wajibkan']);
+        Route::put('/{id}/tidak-wajibkan', [\App\Http\Controllers\Api\DevSyaratController::class, 'tidakWajibkan']);
+        Route::put('/{id}/aktifkan', [\App\Http\Controllers\Api\DevSyaratController::class, 'aktifkan']);
+        Route::put('/{id}/nonaktifkan', [\App\Http\Controllers\Api\DevSyaratController::class, 'nonaktifkan']);
+    });
+
+    // Manajemen Pengguna (users internal) routes — sesuai docs/BACKEND_MANAJEMEN_PENGGUNA.md
+    Route::prefix('pengguna')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\UserManagementController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\UserManagementController::class, 'store']);
+
+        Route::get('/{username}', [\App\Http\Controllers\Api\UserManagementController::class, 'show']);
+        Route::put('/{username}', [\App\Http\Controllers\Api\UserManagementController::class, 'update']);
+        Route::post('/{username}', [\App\Http\Controllers\Api\UserManagementController::class, 'update']);  // FormData compatibility
+        Route::delete('/{username}', [\App\Http\Controllers\Api\UserManagementController::class, 'destroy']);
+
+        Route::get('/{username}/hak-akses', [\App\Http\Controllers\Api\UserManagementController::class, 'hakAkses']);
+        Route::post('/{username}/hak-akses', [\App\Http\Controllers\Api\UserManagementController::class, 'tambahHakAkses']);
+        Route::delete('/{username}/hak-akses/{idModul}', [\App\Http\Controllers\Api\UserManagementController::class, 'hapusHakAkses']);
+    });
+
     // Konten Frontpage (admin) routes — sesuai docs/BACKEND_KONTENFRONTPAGE.md
     Route::prefix('konten')->group(function () {
         Route::get('/kategori', [\App\Http\Controllers\Api\FrontpageController::class, 'kategori']);
@@ -303,6 +331,8 @@ Route::prefix('mutudoc')->group(function () {
     Route::get('/grouped', [\App\Http\Controllers\Api\MutudocController::class, 'grouped']);
     Route::get('/jenis', [\App\Http\Controllers\Api\MutudocController::class, 'jenisList']);
     Route::get('/kategori', [\App\Http\Controllers\Api\MutudocController::class, 'kategoriList']);
+    Route::get('/versi-terakhir', [\App\Http\Controllers\Api\MutudocController::class, 'versiTerakhir']);
+    Route::get('/tanpa-berkas', [\App\Http\Controllers\Api\MutudocController::class, 'tanpaBerkas']);
     Route::get('/{id}', [\App\Http\Controllers\Api\MutudocController::class, 'show']);
 });
 

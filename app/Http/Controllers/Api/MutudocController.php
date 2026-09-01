@@ -126,6 +126,24 @@ class MutudocController extends Controller
      */
     public function store(StoreMutudocRequest $request)
     {
+        // Dup-check 7 field (idem native tambahdocmutudoc; fix: response JSON
+        // alih-alih redirect ke module 'indoc' yang tidak ada)
+        $duplikat = MutudocDoc::where('jenis', $request->jenis)
+            ->where('kategori', $request->kategori)
+            ->where('judul', $request->judul)
+            ->where('deskripsi', $request->deskripsi)
+            ->where('tgl_terbit', $request->tgl_terbit)
+            ->where('no_dokumen', $request->no_dokumen)
+            ->where('no_revisi', $request->no_revisi ?? 0)
+            ->exists();
+
+        if ($duplikat) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Maaf Data Tersebut Sudah Ada',
+            ], 409);
+        }
+
         try {
             // Handle file upload if exists
             $fileName = null;
@@ -276,22 +294,29 @@ class MutudocController extends Controller
     public function destroy($id)
     {
         try {
-            $document = MutudocDoc::findOrFail($id);
+            $document = MutudocDoc::find($id);
 
-            // Delete file if exists
-            if ($document->file) {
+            if (!$document) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Maaf Dokumen tersebut Tidak Ditemukan',
+                ], 404);
+            }
+
+            // Delete file (guard: file kosong/file_exists — fix unlink tanpa guard
+            // pada dokumen metadata-only di native)
+            if (!empty($document->file) && !str_starts_with((string) $document->file, 'http')) {
                 $filePath = public_path('foto_mutudoc/' . $document->file);
                 if (file_exists($filePath)) {
-                    unlink($filePath);
+                    @unlink($filePath);
                 }
             }
 
-            // Soft delete
             $document->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Dokumen mutu berhasil dihapus',
+                'message' => 'Hapus Data Dokumen Sukses',
             ]);
 
         } catch (\Exception $e) {
@@ -316,6 +341,57 @@ class MutudocController extends Controller
         return response()->json([
             'success' => true,
             'data' => $jenis,
+        ]);
+    }
+
+    /**
+     * Versi terakhir per nomor dokumen (Common Query #3).
+     * Revisi dokumen = baris baru (immutable versioning) — endpoint ini
+     * menyaring hanya revisi tertinggi per no_dokumen per jenis.
+     *
+     * GET /api/v1/mutudoc/versi-terakhir
+     */
+    public function versiTerakhir()
+    {
+        $rows = MutudocDoc::with(['jenisDoc', 'kategoriDoc'])
+            ->whereNotNull('no_dokumen')
+            ->where('no_dokumen', '!=', '')
+            ->get()
+            ->groupBy(function ($d) {
+                return $d->jenis . '|' . $d->no_dokumen;
+            })
+            ->map(function ($group) {
+                return $group->sortByDesc('no_revisi')->first();
+            })
+            ->values()
+            ->sortBy('jenis')
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+        ]);
+    }
+
+    /**
+     * Dokumen tanpa berkas / metadata-only (Common Query #4) — daftar
+     * dokumen yang perlu di-upload file-nya.
+     *
+     * GET /api/v1/mutudoc/tanpa-berkas
+     */
+    public function tanpaBerkas()
+    {
+        $rows = MutudocDoc::with(['jenisDoc', 'kategoriDoc'])
+            ->where(function ($q) {
+                $q->whereNull('file')->orWhere('file', '');
+            })
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $rows,
+            'jumlah' => $rows->count(),
         ]);
     }
 

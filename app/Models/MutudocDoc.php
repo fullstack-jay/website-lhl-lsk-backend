@@ -71,11 +71,11 @@ class MutudocDoc extends Model
     }
 
     /**
-     * Get formatted no revisi (R.{no})
+     * Get formatted no revisi — format docs: R0, R1, R2 (tanpa titik)
      */
     public function getNoRevisiFormattedAttribute(): string
     {
-        return 'R.' . $this->no_revisi;
+        return 'R' . $this->no_revisi;
     }
 
     /**

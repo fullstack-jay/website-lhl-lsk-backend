@@ -25,6 +25,9 @@ Route::prefix('auth')->group(function () {
         // Admin protected routes
         Route::get('admin/me', [Auth\AdminAuthController::class, 'me']);
 
+        // Admin ubah kata sandi sendiri (modul password — verifikasi password lama)
+        Route::post('admin/ubah-password', [Auth\AdminAuthController::class, 'ubahPassword']);
+
         // Komite Teknis protected routes
         Route::get('komite-teknis/me', [Auth\KomiteTeknisAuthController::class, 'me']);
 

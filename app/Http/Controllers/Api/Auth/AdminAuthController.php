@@ -111,4 +111,99 @@ class AdminAuthController extends ApiController
             ],
         ]);
     }
+
+    /**
+     * Ubah Kata Sandi Sendiri (self-service) — khusus ADMIN
+     * POST /api/v1/auth/admin/ubah-password
+     *
+     * Implementasi modul `password` native (aksi_password.php) versi API,
+     * dengan validasi fail-fast 4 langkah yang sama:
+     *   1. Semua field terisi (password_lama, password_baru, password_ulangi)
+     *   2. Password baru minimal 8 karakter
+     *   3. Password lama COCOK dengan hash di DB
+     *      (perbaikan keamanan: verifikasi server-side dari DB — native
+     *      mengirim hash lama via hidden input yang terlihat di view-source)
+     *   4. Konfirmasi cocok (password_baru == password_ulangi)
+     *
+     * Lolos semua → UPDATE password (bcrypt, fix MD5 native) +
+     * REVOKE semua token = logout paksa (harus login ulang dgn password baru),
+     * padanan redirect ke index.php native.
+     */
+    public function ubahPassword(Request $request)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Sesi tidak valid. Silakan login kembali.',
+            ], 401);
+        }
+
+        // Hanya role admin (modul password adalah menu internal admin/staff)
+        if (!$user->isAdmin()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Halaman ini khusus untuk admin.',
+            ], 403);
+        }
+
+        // ── Langkah 1: Semua field terisi ──
+        $validator = Validator::make($request->all(), [
+            'password_lama' => 'required',
+            'password_baru' => 'required|min:8',
+            'password_ulangi' => 'required',
+        ], [
+            'password_lama.required' => 'Anda harus mengisikan semua data',
+            'password_baru.required' => 'Anda harus mengisikan semua data',
+            'password_baru.min' => 'Password minimal 8 karakter',
+            'password_ulangi.required' => 'Anda harus mengisikan semua data',
+        ]);
+
+        if ($validator->fails()) {
+            $firstError = collect($validator->errors()->all())->first();
+            return response()->json([
+                'success' => false,
+                'message' => $firstError,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // ── Langkah 3: Password lama cocok? (verifikasi server-side dari DB) ──
+        if (!Hash::check($request->password_lama, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Anda salah memasukkan Password Lama',
+            ], 422);
+        }
+
+        // ── Langkah 4: Konfirmasi cocok? ──
+        if ($request->password_baru !== $request->password_ulangi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Password baru belum cocok',
+            ], 422);
+        }
+
+        try {
+            // UPDATE password (bcrypt — fix MD5 tanpa salt native)
+            $user->password = Hash::make($request->password_baru);
+            $user->save();
+
+            // Logout paksa: revoke semua token (harus login ulang dgn password baru)
+            $user->tokens()->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ganti Password Berhasil, silahkan login kembali',
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memperbarui kata sandi',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

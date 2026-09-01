@@ -195,6 +195,20 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\KomiteController::class, 'resetPassword']);
     });
 
+    // Laporan Transaksi Keuangan (inlapkeu) routes — sesuai docs/BACKEND_KEUANGAN.md
+    Route::prefix('keuangan')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'index']);
+        Route::get('/ringkasan', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'ringkasan']);
+        Route::get('/kode-akun', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'kodeAkun']);
+
+        Route::post('/', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'store']);
+
+        Route::get('/{id}', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'update']);
+        Route::post('/{id}', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'update']);  // FormData compatibility
+        Route::delete('/{id}', [\App\Http\Controllers\Api\KeuTransaksiController::class, 'destroy']);
+    });
+
     // Pengaturan Dokumen Pokok Peserta (devsyarat) routes — sesuai docs/BACKEND_DEVSYARAT.md
     Route::prefix('devsyarat')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\DevSyaratController::class, 'index']);

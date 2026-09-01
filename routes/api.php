@@ -194,6 +194,28 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
         Route::post('/{id}/reset-password', [\App\Http\Controllers\Api\KomiteController::class, 'resetPassword']);
     });
+
+    // Konten Frontpage (admin) routes — sesuai docs/BACKEND_KONTENFRONTPAGE.md
+    Route::prefix('konten')->group(function () {
+        Route::get('/kategori', [\App\Http\Controllers\Api\FrontpageController::class, 'kategori']);
+
+        Route::get('/', [\App\Http\Controllers\Api\FrontpageController::class, 'index']);
+        Route::post('/', [\App\Http\Controllers\Api\FrontpageController::class, 'store']);
+
+        Route::get('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'show']);
+        Route::put('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'update']);
+        Route::post('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'update']);  // FormData compatibility
+        Route::delete('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'destroy']);
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public Frontpage Routes (halaman depan — tanpa auth)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('frontpage')->group(function () {
+    Route::get('/{slug}', [\App\Http\Controllers\Api\FrontpageController::class, 'byKategoriSlug']);
 });
 
 /*

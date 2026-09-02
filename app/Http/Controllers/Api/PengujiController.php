@@ -368,10 +368,6 @@ class PengujiController extends Controller
         ]);
 
         if ($validator->fails()) {
-            \Log::info('Penguji Store Validation Failed', [
-                'request' => $request->all(),
-                'errors' => $validator->errors()->toArray(),
-            ]);
             // Pesan error pertama diangkat ke `message` agar frontend yang hanya
             // menampilkan `message` tetap melihat penyebab spesifiknya.
             $firstError = collect($validator->errors()->all())->first();

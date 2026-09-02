@@ -100,6 +100,22 @@ class UserManagementController extends Controller
         if (empty($user->id_session)) {
             $user->id_session = md5($user->username);
             $user->save();
+
+            // ⭐ Auto-sync profil ke tabel asesor / komite bila level diubah
+            $targetNik = $user->no_ktp ?: $user->username;
+            if ($user->level === 'penguji' && $targetNik) {
+                // komite → asesor (kolom non-match otomatis dibuang)
+                $this->syncProfileRow('asesor', 'komite', $targetNik, [
+                    'inisial' => strtoupper(substr($user->nama_lengkap ?? 'P', 0, 1)),
+                ]);
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+            } elseif (in_array($user->level, ['komite-teknis', 'komite'], true) && $targetNik) {
+                // asesor → komite (kolom non-match otomatis dibuang, mis. tanggal_lisensi)
+                $this->syncProfileRow('komite', 'asesor', $targetNik, [
+                    'jabatan_komite' => 'Anggota',
+                ]);
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+            }
         }
 
         $data = $this->transformUser($user, null, detail: true);
@@ -129,7 +145,7 @@ class UserManagementController extends Controller
             'no_induk' => 'nullable|string|max:100',
             'password' => 'required|string|min:5',
             'passwordkonfirmasi' => 'required|string|same:password',
-            'level' => 'required|in:admin,user',
+            'level' => 'required|in:admin,user,penguji,komite-teknis',
             'blokir' => 'nullable|in:Y,N',
         ], [
             'username.required' => 'Username wajib diisi',
@@ -167,6 +183,22 @@ class UserManagementController extends Controller
             ]);
             $user->id_session = md5($user->username);           // ⭐ kunci pivot hak akses
             $user->save();
+
+            // ⭐ Auto-sync profil ke tabel asesor / komite bila level diubah
+            $targetNik = $user->no_ktp ?: $user->username;
+            if ($user->level === 'penguji' && $targetNik) {
+                // komite → asesor (kolom non-match otomatis dibuang)
+                $this->syncProfileRow('asesor', 'komite', $targetNik, [
+                    'inisial' => strtoupper(substr($user->nama_lengkap ?? 'P', 0, 1)),
+                ]);
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+            } elseif (in_array($user->level, ['komite-teknis', 'komite'], true) && $targetNik) {
+                // asesor → komite (kolom non-match otomatis dibuang, mis. tanggal_lisensi)
+                $this->syncProfileRow('komite', 'asesor', $targetNik, [
+                    'jabatan_komite' => 'Anggota',
+                ]);
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+            }
 
             return response()->json([
                 'success' => true,
@@ -225,7 +257,7 @@ class UserManagementController extends Controller
             'no_telp' => 'nullable|string|max:20',
             'password' => 'nullable|string|min:5',
             'passwordkonfirmasi' => 'nullable|string|same:password',
-            'level' => 'nullable|in:admin,user',
+            'level' => 'nullable|in:admin,user,penguji,komite-teknis',
             'blokir' => 'nullable|in:Y,N',
 
             // Upload foto profil
@@ -277,6 +309,22 @@ class UserManagementController extends Controller
             }
 
             $user->save();
+
+            // ⭐ Auto-sync profil ke tabel asesor / komite bila level diubah
+            $targetNik = $user->no_ktp ?: $user->username;
+            if ($user->level === 'penguji' && $targetNik) {
+                // komite → asesor (kolom non-match otomatis dibuang)
+                $this->syncProfileRow('asesor', 'komite', $targetNik, [
+                    'inisial' => strtoupper(substr($user->nama_lengkap ?? 'P', 0, 1)),
+                ]);
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+            } elseif (in_array($user->level, ['komite-teknis', 'komite'], true) && $targetNik) {
+                // asesor → komite (kolom non-match otomatis dibuang, mis. tanggal_lisensi)
+                $this->syncProfileRow('komite', 'asesor', $targetNik, [
+                    'jabatan_komite' => 'Anggota',
+                ]);
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+            }
 
             return response()->json([
                 'success' => true,
@@ -386,6 +434,22 @@ class UserManagementController extends Controller
         if (empty($user->id_session)) {
             $user->id_session = md5($username);
             $user->save();
+
+            // ⭐ Auto-sync profil ke tabel asesor / komite bila level diubah
+            $targetNik = $user->no_ktp ?: $user->username;
+            if ($user->level === 'penguji' && $targetNik) {
+                // komite → asesor (kolom non-match otomatis dibuang)
+                $this->syncProfileRow('asesor', 'komite', $targetNik, [
+                    'inisial' => strtoupper(substr($user->nama_lengkap ?? 'P', 0, 1)),
+                ]);
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+            } elseif (in_array($user->level, ['komite-teknis', 'komite'], true) && $targetNik) {
+                // asesor → komite (kolom non-match otomatis dibuang, mis. tanggal_lisensi)
+                $this->syncProfileRow('komite', 'asesor', $targetNik, [
+                    'jabatan_komite' => 'Anggota',
+                ]);
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+            }
         }
 
         // Hak akses existing (padanan Bagian 1)
@@ -522,6 +586,49 @@ class UserManagementController extends Controller
     // ════════════════════════════════════════════════════════════════
 
     /**
+     * Daftar nama kolom aktual sebuah tabel (cache per-request).
+     * Dipakai auto-sync level agar hanya kolom yang ADA di tabel tujuan
+     * yang dikopi (asesor & komite tidak identik — mis. tanggal_lisensi).
+     */
+    private function tableColumns(string $table): array
+    {
+        static $cache = [];
+        if (!isset($cache[$table])) {
+            $cache[$table] = array_column(DB::select("DESCRIBE `{$table}`"), 'Field');
+        }
+        return $cache[$table];
+    }
+
+    /**
+     * Sinkronkan profil user ke tabel target (asesor/komite) — hanya kolom
+     * yang ada di kedua tabel. Menghindari "Unknown column" saat struktur
+     * tabel tidak identik.
+     */
+    private function syncProfileRow(string $targetTable, string $sourceTable, string $nik, array $overrides = []): void
+    {
+        $source = DB::table($sourceTable)->where('no_ktp', $nik)->first();
+        if (!$source) {
+            return;
+        }
+
+        $targetCols = $this->tableColumns($targetTable);
+        $data = (array) $source;
+
+        // Buang kolom yang tidak ada di tabel tujuan + PK
+        foreach ($data as $col => $val) {
+            if (!in_array($col, $targetCols) || $col === 'id') {
+                unset($data[$col]);
+            }
+        }
+
+        foreach ($overrides as $k => $v) {
+            $data[$k] = $v;
+        }
+
+        DB::table($targetTable)->updateOrInsert(['no_ktp' => $nik], $data);
+    }
+
+    /**
      * Transform user menjadi payload (list ringkas / detail lengkap).
      */
     private function transformUser(User $user, ?int $jumlahAkses = null, bool $detail = false): array
@@ -535,6 +642,9 @@ class UserManagementController extends Controller
         $data = [
             'username' => $user->username,
             'nama_lengkap' => $user->nama_lengkap,
+            'no_induk' => $user->no_induk,
+            'foto' => $user->foto,
+            'foto_url' => $user->foto ? asset(self::UPLOAD_DIR . '/' . $user->foto) : null,
             'level' => $user->level,
             'blokir' => $user->blokir,
             'status_login' => $user->blokir === 'N' ? 'AKTIF' : 'DIBLOKIR',

@@ -75,12 +75,6 @@ class PersyaratanTukController extends Controller
      */
     public function store(Request $request)
     {
-        // Debug logging
-        \Log::info('PersyaratanTuk Store Request:', [
-            'all' => $request->all(),
-            'input' => $request->input(),
-        ]);
-
         // Validate request with more flexible field names
         // Support both: id_skemakkni (backend) and id_skema/skemaId (frontend)
         $validator = Validator::make($request->all(), [
@@ -116,11 +110,6 @@ class PersyaratanTukController extends Controller
         }
 
         if ($validator->fails()) {
-            \Log::error('PersyaratanTuk Validation Failed:', [
-                'errors' => $validator->errors()->toArray(),
-                'request' => $request->all(),
-                'available_skema_ids' => \App\Models\SkemaKkni::pluck('id')->toArray(),
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',

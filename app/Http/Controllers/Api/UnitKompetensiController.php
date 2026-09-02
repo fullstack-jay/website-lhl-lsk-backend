@@ -153,11 +153,6 @@ class UnitKompetensiController extends Controller
         }
 
         if ($validator->fails()) {
-            \Log::info('Unit Kompetensi Validation Failed', [
-                'request' => $request->all(),
-                'mapped_data' => $requestData,
-                'errors' => $validator->errors()->toArray()
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',

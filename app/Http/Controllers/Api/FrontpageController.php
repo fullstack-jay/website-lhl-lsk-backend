@@ -351,6 +351,17 @@ class FrontpageController extends Controller
      */
     public function byKategoriSlug(Request $request, $slug): JsonResponse
     {
+        if ($slug === 'stats') {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'skema' => (int) DB::table('skema_kkni')->where('aktif', 'Y')->count(),
+                    'penguji' => (int) DB::table('asesor')->count(),
+                    'tuk' => (int) DB::table('tuk')->count(),
+                    'peserta_uji' => (int) DB::table('asesi')->count(),
+                ],
+            ]);
+        }
         $kategori = FrontpageKategori::where('kategori', $slug)->first();
         if (!$kategori) {
             return response()->json([

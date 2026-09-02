@@ -157,11 +157,6 @@ class JadwalAsesmenController extends Controller
         ]);
 
         if ($validator->fails()) {
-            \Log::info('Jadwal Asesmen Validation Failed', [
-                'request' => $request->all(),
-                'files' => array_keys($request->allFiles()),
-                'errors' => $validator->errors()->toArray()
-            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Validasi gagal',

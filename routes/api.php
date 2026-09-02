@@ -262,6 +262,15 @@ Route::prefix('frontpage')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
+| Peserta Portal Routes (auth peserta — BUKAN admin/peserta/*)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\Api\PesertaDashboardController::class, 'index']);
+});
+
+/*
+|--------------------------------------------------------------------------
 | Biaya Routes
 |--------------------------------------------------------------------------
 */

@@ -258,6 +258,11 @@ class AsesiController extends Controller
         if ($request->has('propinsi')) {
             $query->byPropinsi($request->propinsi);
         }
+
+        // Filter by kota
+        if ($request->has('kota')) {
+            $query->byKota($request->kota);
+        }
     }
 
     /**
@@ -699,10 +704,29 @@ class AsesiController extends Controller
 
         // By propinsi
         $byPropinsi = DB::table('asesi as a')
-            ->select('w.nm_wil as propinsi', DB::raw('COUNT(*) as total'))
+            ->select(
+                DB::raw('COALESCE(w.id_wil, a.propinsi) as id_wil'),
+                DB::raw('COALESCE(w.nm_wil, a.propinsi, "(Tanpa Provinsi)") as propinsi'),
+                DB::raw('COUNT(*) as total')
+            )
             ->leftJoin('data_wilayah as w', 'a.propinsi', '=', 'w.id_wil')
             ->whereNotNull('a.propinsi')
-            ->groupBy('w.nm_wil')
+            ->where('a.propinsi', '!=', '')
+            ->groupBy('w.id_wil', 'w.nm_wil', 'a.propinsi')
+            ->orderBy('total', 'desc')
+            ->get();
+
+        // By kota
+        $byKota = DB::table('asesi as a')
+            ->select(
+                DB::raw('COALESCE(w.id_wil, a.kota) as id_wil'),
+                DB::raw('COALESCE(w.nm_wil, a.kota, "(Tanpa Kota)") as kota'),
+                DB::raw('COUNT(*) as total')
+            )
+            ->leftJoin('data_wilayah as w', 'a.kota', '=', 'w.id_wil')
+            ->whereNotNull('a.kota')
+            ->where('a.kota', '!=', '')
+            ->groupBy('w.id_wil', 'w.nm_wil', 'a.kota')
             ->orderBy('total', 'desc')
             ->get();
 
@@ -720,6 +744,7 @@ class AsesiController extends Controller
                 'diblokir' => $stats['diblokir'],
                 'by_angkatan' => $byAngkatan,
                 'by_propinsi' => $byPropinsi,
+                'by_kota' => $byKota,
             ],
         ]);
     }
@@ -741,6 +766,10 @@ class AsesiController extends Controller
             'jenis_kelamin' => $asesi->jenis_kelamin,
             'tgl_daftar' => $asesi->tgl_daftar ? $asesi->tgl_daftar->format('Y-m-d') : null,
             'angkatan' => $asesi->angkatan,
+            'propinsi' => $asesi->propinsi,
+            'propinsi_nama' => $asesi->propinsiWilayah->nm_wil ?? (is_string($asesi->propinsi) ? $asesi->propinsi : ''),
+            'kota' => $asesi->kota,
+            'kota_nama' => $asesi->kotaWilayah->nm_wil ?? (is_string($asesi->kota) ? $asesi->kota : ''),
             'verifikasi' => $asesi->verifikasi,
             'blokir' => $asesi->blokir,
             'status' => $asesi->status_label,

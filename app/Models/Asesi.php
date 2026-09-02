@@ -71,7 +71,7 @@ class Asesi extends Model
         'tahun_lulus' => 'integer',
         'usia' => 'integer',
         'angkatan' => 'integer',
-        'blokir' => 'boolean',
+        'blokir' => 'string',
         'waktu' => 'datetime',
     ];
 
@@ -189,7 +189,7 @@ class Asesi extends Model
      */
     public function getStatusLabelAttribute()
     {
-        if ($this->blokir) {
+        if ($this->blokir === 'Y' || $this->blokir === true) {
             return 'Diblokir';
         }
 
@@ -261,7 +261,40 @@ class Asesi extends Model
      */
     public function scopeByPropinsi($query, $propinsi)
     {
-        return $query->where('propinsi', $propinsi);
+        if (empty($propinsi)) return $query;
+        return $query->where(function ($q) use ($propinsi) {
+            $q->where('propinsi', $propinsi)
+              ->orWhereIn('propinsi', function ($sub) use ($propinsi) {
+                  $sub->select('id_wil')
+                      ->from('data_wilayah')
+                      ->where('id_level_wil', 1)
+                      ->where('nm_wil', 'like', "%{$propinsi}%");
+              });
+        });
+    }
+
+    public function scopeByKota($query, $kota)
+    {
+        if (empty($kota)) return $query;
+        return $query->where(function ($q) use ($kota) {
+            $q->where('kota', $kota)
+              ->orWhereIn('kota', function ($sub) use ($kota) {
+                  $sub->select('id_wil')
+                      ->from('data_wilayah')
+                      ->where('id_level_wil', 2)
+                      ->where('nm_wil', 'like', "%{$kota}%");
+              });
+        });
+    }
+
+    public function propinsiWilayah(): BelongsTo
+    {
+        return $this->belongsTo(DataWilayah::class, 'propinsi', 'id_wil');
+    }
+
+    public function kotaWilayah(): BelongsTo
+    {
+        return $this->belongsTo(DataWilayah::class, 'kota', 'id_wil');
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Asesi;
+use App\Models\MasterKeahlian;
 use App\Models\AsesiAsesmen;
 use App\Models\AsesiDoc;
 use App\Models\AsesiPembayaran;
@@ -364,10 +365,19 @@ class AsesiController extends Controller
             'suket' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
 
             // NOTE: upload file Scan KTP dihapus dari form frontend
-            'foto' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:2048',
-            'kk' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
-            'ijazah' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
-            'transkrip' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            'foto' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:10240',
+            'ktp' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'ijazah' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'sertifikat_amdal' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'bukti_keterlibatan' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'dokumen_amdal' => 'nullable|file|mimes:jpg,jpeg,png,pdf,zip,rar|max:10240',
+            'cv' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'sertifikat_kompetensi_lain' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'form_pendaftaran' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'sertifikat_atpa_ktpa' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'transkrip' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'suket' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
+            'sertifikat' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:10240',
         ], [
             'nama.required' => 'Nama wajib diisi',
             'no_ktp.required' => 'No. KTP wajib diisi',
@@ -408,11 +418,26 @@ class AsesiController extends Controller
             $data['blokir'] = 'N';
 
             // Metadata Sertifikat Kompetensi (opsional)
+            if ($request->filled('keahlian_penyusun')) {
+                $data['keahlian_penyusun'] = MasterKeahlian::recordMultipleIfNew($request->keahlian_penyusun);
+            }
             $data['no_sertifikat'] = $request->filled('no_sertifikat') ? $request->no_sertifikat : null;
             $data['tgl_sertifikat'] = $request->filled('tgl_sertifikat') ? $request->tgl_sertifikat : null;
 
             // Upload files
-            if ($request->hasFile('foto')) {
+            $docKeys = ['foto', 'ktp', 'ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal', 'cv', 'sertifikat_kompetensi_lain', 'form_pendaftaran', 'sertifikat_atpa_ktpa', 'transkrip', 'suket', 'sertifikat', 'kk'];
+            foreach ($docKeys as $key) {
+                if ($request->hasFile($key)) {
+                    $uploaded = $request->file($key);
+                    $savedPath = $uploaded->storeAs('foto_asesi', $noPendaftaran . '_' . $key . '.' . $uploaded->getClientOriginalExtension(), 'public');
+                    $data[$key] = basename($savedPath);
+                    if ($key === 'sertifikat_amdal') $data['sertifikat'] = $data[$key];
+                    if ($key === 'bukti_keterlibatan') $data['suket'] = $data[$key];
+                    if ($key === 'sertifikat_kompetensi_lain') $data['transkrip'] = $data[$key];
+                }
+            }
+
+            if (false && $request->hasFile('foto')) {
                 $foto = $request->file('foto');
                 $fotoPath = $foto->storeAs('foto_asesi', $noPendaftaran . '_foto.' . $foto->getClientOriginalExtension(), 'public');
                 $data['foto'] = basename($fotoPath);
@@ -581,7 +606,25 @@ class AsesiController extends Controller
         try {
             DB::beginTransaction();
 
-            $asesi->update($request->except(['no_pendaftaran', 'password']));
+            $docKeys = ['foto', 'ktp', 'ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal', 'cv', 'sertifikat_kompetensi_lain', 'form_pendaftaran', 'sertifikat_atpa_ktpa', 'transkrip', 'suket', 'sertifikat', 'kk'];
+            $updateData = $request->except(array_merge(['no_pendaftaran', 'password'], $docKeys));
+            
+            if ($request->filled('keahlian_penyusun')) {
+                $updateData['keahlian_penyusun'] = MasterKeahlian::recordMultipleIfNew($request->keahlian_penyusun);
+            }
+
+            foreach ($docKeys as $key) {
+                if ($request->hasFile($key)) {
+                    $uploaded = $request->file($key);
+                    $savedPath = $uploaded->storeAs('foto_asesi', $asesi->no_pendaftaran . '_' . $key . '.' . $uploaded->getClientOriginalExtension(), 'public');
+                    $updateData[$key] = basename($savedPath);
+                    if ($key === 'sertifikat_amdal') $updateData['sertifikat'] = $updateData[$key];
+                    if ($key === 'bukti_keterlibatan') $updateData['suket'] = $updateData[$key];
+                    if ($key === 'sertifikat_kompetensi_lain') $updateData['transkrip'] = $updateData[$key];
+                }
+            }
+
+            $asesi->update($updateData);
 
             DB::commit();
 

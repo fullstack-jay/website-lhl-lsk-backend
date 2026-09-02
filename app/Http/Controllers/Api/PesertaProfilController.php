@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Asesi;
+use App\Models\MasterKeahlian;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ class PesertaProfilController extends Controller
                     'nama' => $user->nama_lengkap,
                     'email' => $user->email,
                     'nohp' => $user->no_telp,
+                    'keahlian_penyusun' => $user->keahlian_penyusun,
                     'foto_url' => $user->foto ? url('storage/foto_asesi/' . $user->foto) : null,
                     'is_empty' => true,
                 ],
@@ -73,6 +75,11 @@ class PesertaProfilController extends Controller
 
         $baseUrl = url('/');
 
+        // Map Fallback Documents
+        $sertifikatAmdal = $asesi->sertifikat_amdal ?: $asesi->sertifikat;
+        $buktiKeterlibatan = $asesi->bukti_keterlibatan ?: $asesi->suket;
+        $sertifikatKompetensiLain = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -84,6 +91,7 @@ class PesertaProfilController extends Controller
                 'tgl_lahir' => $asesi->tgl_lahir ? $asesi->tgl_lahir->format('Y-m-d') : null,
                 'jenis_kelamin' => $asesi->jenis_kelamin ?: 'L',
                 'pendidikan' => $asesi->pendidikan,
+                'keahlian_penyusun' => $asesi->keahlian_penyusun,
                 'email' => $asesi->email,
                 'nohp' => $asesi->nohp,
                 'alamat' => $asesi->alamat,
@@ -102,19 +110,44 @@ class PesertaProfilController extends Controller
                 'angkatan' => $asesi->angkatan,
                 'verifikasi' => $asesi->verifikasi,
                 'blokir' => $asesi->blokir,
-                // Dokumen
-                'foto' => $asesi->foto,
-                'foto_url' => $asesi->foto ? "{$baseUrl}/storage/foto_asesi/" . $asesi->foto : null,
-                'ktp' => $asesi->ktp,
-                'ktp_url' => $asesi->ktp ? "{$baseUrl}/storage/foto_asesi/" . $asesi->ktp : null,
+                
+                // Syarat Dasar / Pokok
                 'ijazah' => $asesi->ijazah,
                 'ijazah_url' => $asesi->ijazah ? "{$baseUrl}/storage/foto_asesi/" . $asesi->ijazah : null,
+                
+                'sertifikat_amdal' => $sertifikatAmdal,
+                'sertifikat_amdal_url' => $sertifikatAmdal ? "{$baseUrl}/storage/foto_asesi/" . $sertifikatAmdal : null,
+                
+                'bukti_keterlibatan' => $buktiKeterlibatan,
+                'bukti_keterlibatan_url' => $buktiKeterlibatan ? "{$baseUrl}/storage/foto_asesi/" . $buktiKeterlibatan : null,
+                
+                'dokumen_amdal' => $asesi->dokumen_amdal,
+                'dokumen_amdal_url' => $asesi->dokumen_amdal ? "{$baseUrl}/storage/foto_asesi/" . $asesi->dokumen_amdal : null,
+                
+                // Syarat Tambahan (Opsional)
+                'cv' => $asesi->cv,
+                'cv_url' => $asesi->cv ? "{$baseUrl}/storage/foto_asesi/" . $asesi->cv : null,
+                
+                'foto' => $asesi->foto,
+                'foto_url' => $asesi->foto ? "{$baseUrl}/storage/foto_asesi/" . $asesi->foto : null,
+                
+                'ktp' => $asesi->ktp,
+                'ktp_url' => $asesi->ktp ? "{$baseUrl}/storage/foto_asesi/" . $asesi->ktp : null,
+                
+                'sertifikat_kompetensi_lain' => $sertifikatKompetensiLain,
+                'sertifikat_kompetensi_lain_url' => $sertifikatKompetensiLain ? "{$baseUrl}/storage/foto_asesi/" . $sertifikatKompetensiLain : null,
+                
+                'form_pendaftaran' => $asesi->form_pendaftaran,
+                'form_pendaftaran_url' => $asesi->form_pendaftaran ? "{$baseUrl}/storage/foto_asesi/" . $asesi->form_pendaftaran : null,
+                
+                'sertifikat_atpa_ktpa' => $asesi->sertifikat_atpa_ktpa,
+                'sertifikat_atpa_ktpa_url' => $asesi->sertifikat_atpa_ktpa ? "{$baseUrl}/storage/foto_asesi/" . $asesi->sertifikat_atpa_ktpa : null,
+
+                // Legacy keys
                 'transkrip' => $asesi->transkrip,
                 'transkrip_url' => $asesi->transkrip ? "{$baseUrl}/storage/foto_asesi/" . $asesi->transkrip : null,
                 'suket' => $asesi->suket,
                 'suket_url' => $asesi->suket ? "{$baseUrl}/storage/foto_asesi/" . $asesi->suket : null,
-                'cv' => $asesi->cv,
-                'cv_url' => $asesi->cv ? "{$baseUrl}/storage/foto_asesi/" . $asesi->cv : null,
                 'sertifikat' => $asesi->sertifikat,
                 'sertifikat_url' => $asesi->sertifikat ? "{$baseUrl}/storage/foto_asesi/" . $asesi->sertifikat : null,
             ],
@@ -137,13 +170,30 @@ class PesertaProfilController extends Controller
             ->orWhere('nohp', $user->no_telp)
             ->first();
 
-        $validator = Validator::make($request->all(), [
+        $docKeys = [
+            'foto',
+            'ktp',
+            'ijazah',
+            'sertifikat_amdal',
+            'bukti_keterlibatan',
+            'dokumen_amdal',
+            'cv',
+            'sertifikat_kompetensi_lain',
+            'form_pendaftaran',
+            'sertifikat_atpa_ktpa',
+            'transkrip',
+            'suket',
+            'sertifikat',
+        ];
+
+        $rules = [
             'nama' => 'required|string|max:100',
             'no_ktp' => 'required|string|max:30',
             'tmp_lahir' => 'nullable|string|max:100',
             'tgl_lahir' => 'nullable|date',
             'jenis_kelamin' => 'nullable|in:L,P',
             'pendidikan' => 'nullable|string|max:50',
+            'keahlian_penyusun' => 'nullable',
             'email' => 'nullable|email|max:100',
             'nohp' => 'required|string|max:25',
             'alamat' => 'nullable|string',
@@ -156,14 +206,13 @@ class PesertaProfilController extends Controller
             'kodepos' => 'nullable|string|max:10',
             'no_sertifikat' => 'nullable|string|max:100',
             'tgl_sertifikat' => 'nullable|date',
-            'foto' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:2048',
-            'ktp' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-            'ijazah' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-            'transkrip' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-            'suket' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-            'cv' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-            'sertifikat' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
-        ]);
+        ];
+
+        foreach ($docKeys as $docKey) {
+            $rules[$docKey] = 'nullable|file|mimes:jpg,jpeg,png,webp,pdf,doc,docx,zip,rar|max:10240';
+        }
+
+        $validator = Validator::make($request->all(), $rules);
 
         if ($validator->fails()) {
             $firstError = collect($validator->errors()->all())->first();
@@ -178,8 +227,14 @@ class PesertaProfilController extends Controller
         try {
             $noPendaftaran = $asesi ? $asesi->no_pendaftaran : ($user->no_induk ?: Asesi::generateNoPendaftaran());
 
-            $data = $request->except(['foto', 'ktp', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat']);
+            $data = $request->except($docKeys);
             $data['no_pendaftaran'] = $noPendaftaran;
+
+            if ($request->filled('keahlian_penyusun')) {
+                $formattedKeahlian = MasterKeahlian::recordMultipleIfNew($request->keahlian_penyusun);
+                $data['keahlian_penyusun'] = $formattedKeahlian;
+            }
+
             if (!$asesi) {
                 $data['tgl_daftar'] = now()->toDateString();
                 $data['angkatan'] = now()->year;
@@ -188,7 +243,7 @@ class PesertaProfilController extends Controller
             }
 
             // Handle file uploads
-            foreach (['foto', 'ktp', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat'] as $fileKey) {
+            foreach ($docKeys as $fileKey) {
                 if ($request->hasFile($fileKey)) {
                     $uploaded = $request->file($fileKey);
                     $savedPath = $uploaded->storeAs(
@@ -197,6 +252,11 @@ class PesertaProfilController extends Controller
                         'public'
                     );
                     $data[$fileKey] = basename($savedPath);
+
+                    // Sync legacy fields
+                    if ($fileKey === 'sertifikat_amdal') $data['sertifikat'] = $data[$fileKey];
+                    if ($fileKey === 'bukti_keterlibatan') $data['suket'] = $data[$fileKey];
+                    if ($fileKey === 'sertifikat_kompetensi_lain') $data['transkrip'] = $data[$fileKey];
                 }
             }
 
@@ -206,32 +266,17 @@ class PesertaProfilController extends Controller
                 $asesi = Asesi::create($data);
             }
 
-            // Catat sertifikat ke asesi_doc jika ada
-            if ($request->filled('no_sertifikat') || $request->filled('tgl_sertifikat') || $request->hasFile('suket')) {
-                DB::table('asesi_doc')->updateOrInsert(
-                    [
-                        'id_asesi' => $noPendaftaran,
-                        'nama_doc' => 'Sertifikat Kompetensi',
-                    ],
-                    [
-                        'nomor_doc' => $request->input('no_sertifikat'),
-                        'tgl_doc'   => $request->input('tgl_sertifikat'),
-                        'file'      => $data['suket'] ?? ($asesi->suket ?? null),
-                        'status'    => 'P',
-                    ]
-                );
-            }
-
             // Mirror update to users table
             $user->update([
-                'nama_lengkap' => $asesi->nama,
-                'no_ktp'       => $asesi->no_ktp,
-                'no_telp'      => $asesi->nohp,
-                'email'        => $asesi->email,
-                'tmp_lahir'    => $asesi->tmp_lahir,
-                'tgl_lahir'    => $asesi->tgl_lahir,
-                'alamat'       => $asesi->alamat,
-                'foto'         => $asesi->foto ?: $user->foto,
+                'nama_lengkap'      => $asesi->nama,
+                'no_ktp'            => $asesi->no_ktp,
+                'no_telp'           => $asesi->nohp,
+                'email'             => $asesi->email,
+                'keahlian_penyusun' => $asesi->keahlian_penyusun,
+                'tmp_lahir'         => $asesi->tmp_lahir,
+                'tgl_lahir'         => $asesi->tgl_lahir,
+                'alamat'            => $asesi->alamat,
+                'foto'              => $asesi->foto ?: $user->foto,
             ]);
 
             DB::commit();

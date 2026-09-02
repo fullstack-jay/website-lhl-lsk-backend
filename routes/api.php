@@ -1,5 +1,9 @@
 <?php
 
+// Master Keahlian Penyusun
+Route::get('/keahlian-penyusun', [\App\Http\Controllers\Api\MasterKeahlianController::class, 'index']);
+Route::post('/keahlian-penyusun', [\App\Http\Controllers\Api\MasterKeahlianController::class, 'store']);
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 

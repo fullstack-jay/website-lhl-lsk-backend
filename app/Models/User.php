@@ -88,6 +88,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'no_induk',
         'no_ktp',
         'pendidikan_terakhir',
+        'keahlian_penyusun',
         'email',
         'alamat',
         'RT',

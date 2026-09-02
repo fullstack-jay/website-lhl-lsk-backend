@@ -143,8 +143,8 @@ class UserManagementController extends Controller
                 ];
 
                 DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp' => $targetNik)->delete();
-                DB::table('komite')->where('no_ktp' => $targetNik)->delete();
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
             }
         }
 
@@ -173,6 +173,7 @@ class UserManagementController extends Controller
             'username' => 'required|string|max:50',
             'nama_lengkap' => 'required|string|max:100',
             'no_induk' => 'nullable|string|max:100',
+            'no_ktp' => 'nullable|string|max:50',
             'password' => 'required|string|min:5',
             'passwordkonfirmasi' => 'required|string|same:password',
             'level' => 'required|in:admin,user,penguji,komite-teknis',
@@ -208,6 +209,7 @@ class UserManagementController extends Controller
                 'password' => Hash::make($request->password),   // bcrypt (bukan MD5)
                 'nama_lengkap' => strip_tags(trim($request->nama_lengkap)),
                 'no_induk' => $request->no_induk,
+                'no_ktp' => $request->no_ktp ?: $request->no_induk,
                 'level' => $request->level,
                 'blokir' => $request->input('blokir', 'N'),     // ✅ fix: ikut di-INSERT
             ]);
@@ -256,8 +258,8 @@ class UserManagementController extends Controller
                 ];
 
                 DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp' => $targetNik)->delete();
-                DB::table('komite')->where('no_ktp' => $targetNik)->delete();
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
             }
 
             return response()->json([
@@ -412,8 +414,8 @@ class UserManagementController extends Controller
                 ];
 
                 DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp' => $targetNik)->delete();
-                DB::table('komite')->where('no_ktp' => $targetNik)->delete();
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
             }
 
             return response()->json([
@@ -567,8 +569,8 @@ class UserManagementController extends Controller
                 ];
 
                 DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp' => $targetNik)->delete();
-                DB::table('komite')->where('no_ktp' => $targetNik)->delete();
+                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                DB::table('komite')->where('no_ktp', $targetNik)->delete();
             }
         }
 

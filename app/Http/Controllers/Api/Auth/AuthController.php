@@ -51,10 +51,12 @@ class AuthController extends ApiController
         if ($username) {
             $user = User::where('username', $username)->active()->first();
         }
-        // Peserta/Komite/Penguji login by KTP/HP
+        // Peserta/Komite/Penguji login by no_pendaftaran (username) / KTP / HP
         elseif ($identifier) {
             $user = User::where(function ($query) use ($identifier) {
                 $query->where('no_ktp', $identifier)
+                      ->orWhere('username', $identifier)      // username = no_pendaftaran (peserta baru)
+                      ->orWhere('no_induk', $identifier)      // no_induk = no_pendaftaran (peserta baru)
                       ->orWhere('no_telp', $identifier);
             })->active()->first();
         }

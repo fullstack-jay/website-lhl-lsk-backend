@@ -337,7 +337,7 @@ class PengujiController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'no_ktp' => 'required|string|max:30|unique:users,username',
+            'no_ktp' => 'required|string|max:30|unique:asesor,no_ktp',
             'nama' => 'required|string|max:255',
             'gelar_depan' => 'nullable|string|max:50',
             'gelar_blk' => 'nullable|string|max:100',
@@ -363,7 +363,7 @@ class PengujiController extends Controller
             'kodepos' => 'nullable|string|max:10',
         ], [
             'no_ktp.required' => 'NIK (No. KTP) wajib diisi',
-            'no_ktp.unique' => 'NIK tersebut sudah terdaftar',
+            'no_ktp.unique' => 'NIK tersebut sudah terdaftar sebagai Penguji',
             'nama.required' => 'Nama wajib diisi',
         ]);
 

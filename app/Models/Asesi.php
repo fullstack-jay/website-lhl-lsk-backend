@@ -49,6 +49,8 @@ class Asesi extends Model
         'suket',
         'cv',
         'sertifikat',
+        'no_sertifikat',
+        'tgl_sertifikat',
         'pekerjaan',
         'jabatan',
         'nama_kantor',
@@ -67,6 +69,7 @@ class Asesi extends Model
     protected $casts = [
         'tgl_lahir' => 'date',
         'tgl_ijazah' => 'date',
+        'tgl_sertifikat' => 'date',
         'tgl_daftar' => 'date',
         'tahun_lulus' => 'integer',
         'usia' => 'integer',

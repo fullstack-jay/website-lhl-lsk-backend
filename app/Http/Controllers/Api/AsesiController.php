@@ -357,8 +357,14 @@ class AsesiController extends Controller
             'nohp' => 'required|string|max:20',
             'email' => 'nullable|email',
             'wil_ujikom' => 'nullable|string',
-            'foto' => 'nullable|file|mimes:jpg,jpeg,png|max:2048',
-            'ktp' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+
+            // Sertifikat Kompetensi (opsional — catatan perubahan frontend)
+            'no_sertifikat' => 'nullable|string|max:100',
+            'tgl_sertifikat' => 'nullable|date',
+            'suket' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+
+            // NOTE: upload file Scan KTP dihapus dari form frontend
+            'foto' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:2048',
             'kk' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'ijazah' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'transkrip' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
@@ -372,9 +378,15 @@ class AsesiController extends Controller
         ]);
 
         if ($validator->fails()) {
+            \Log::info('Peserta Store Validation Failed', [
+                'fields' => array_keys($request->all()),
+                'files' => array_keys($request->allFiles()),
+                'errors' => $validator->errors()->toArray(),
+            ]);
+            $firstError = collect($validator->errors()->all())->first();
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal',
+                'message' => $firstError ?: 'Validasi gagal',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -388,12 +400,16 @@ class AsesiController extends Controller
             $angkatan = now()->year;
 
             // Handle file uploads
-            $data = $request->except(['foto', 'ktp', 'kk', 'ijazah', 'transkrip']);
+            $data = $request->except(['foto', 'ktp', 'kk', 'ijazah', 'transkrip', 'suket']);
             $data['no_pendaftaran'] = $noPendaftaran;
             $data['tgl_daftar'] = $tglDaftar;
             $data['angkatan'] = $angkatan;
             $data['verifikasi'] = 'P';
             $data['blokir'] = 'N';
+
+            // Metadata Sertifikat Kompetensi (opsional)
+            $data['no_sertifikat'] = $request->filled('no_sertifikat') ? $request->no_sertifikat : null;
+            $data['tgl_sertifikat'] = $request->filled('tgl_sertifikat') ? $request->tgl_sertifikat : null;
 
             // Upload files
             if ($request->hasFile('foto')) {
@@ -426,7 +442,64 @@ class AsesiController extends Controller
                 $data['transkrip'] = basename($transkripPath);
             }
 
+            // File Sertifikat Kompetensi (suket) → foto_asesi/, nama file ke asesi.suket
+            $fileNameSuket = null;
+            if ($request->hasFile('suket')) {
+                $suket = $request->file('suket');
+                $suketPath = $suket->storeAs('foto_asesi', $noPendaftaran . '_suket.' . $suket->getClientOriginalExtension(), 'public');
+                $fileNameSuket = basename($suketPath);
+                $data['suket'] = $fileNameSuket;
+            }
+
             $asesi = Asesi::create($data);
+
+            // Catat Sertifikat Kompetensi ke asesi_doc (opsional multi-dokumen)
+            if ($request->filled('no_sertifikat') || $request->filled('tgl_sertifikat') || $request->hasFile('suket')) {
+                DB::table('asesi_doc')->insert([
+                    'id_asesi'  => $noPendaftaran,
+                    'nama_doc'  => 'Sertifikat Kompetensi',
+                    'nomor_doc' => $request->input('no_sertifikat'),
+                    'tgl_doc'   => $request->input('tgl_sertifikat'),
+                    'file'      => $fileNameSuket,
+                    'status'    => 'P',
+                ]);
+            }
+
+            // Buat akun login peserta di tabel users jika belum ada
+            $defaultPassword = 'Kbl12345';
+
+            $user = \App\Models\User::where('username', $noPendaftaran)
+                ->orWhere('no_ktp', $asesi->no_ktp)
+                ->first();
+
+            $userData = [
+                'username'            => $noPendaftaran,
+                'nama_lengkap'        => $asesi->nama,
+                'no_ktp'              => $asesi->no_ktp,
+                'no_induk'            => $noPendaftaran,
+                'tmp_lahir'           => $asesi->tmp_lahir,
+                'tgl_lahir'           => $asesi->tgl_lahir,
+                'pendidikan_terakhir' => $asesi->pendidikan,
+                'email'               => $asesi->email ?: ($noPendaftaran . '@peserta.lsplhl.id'),
+                'alamat'              => $asesi->alamat,
+                'RT'                  => $asesi->RT,
+                'RW'                  => $asesi->RW,
+                'kelurahan'           => $asesi->kelurahan,
+                'kecamatan'           => $asesi->kecamatan,
+                'kota'                => $asesi->kota,
+                'propinsi'            => $asesi->propinsi,
+                'no_telp'             => $asesi->nohp,
+                'foto'                => $data['foto'] ?? null,
+                'level'               => 'user',
+                'blokir'              => 'N',
+            ];
+
+            if (!$user) {
+                $userData['password'] = \Illuminate\Support\Facades\Hash::make($defaultPassword);
+                $user = \App\Models\User::create($userData);
+            } else {
+                $user->update($userData);
+            }
 
             DB::commit();
 
@@ -436,7 +509,18 @@ class AsesiController extends Controller
                 'data' => [
                     'id' => $asesi->id,
                     'no_pendaftaran' => $asesi->no_pendaftaran,
+                    'nama' => $asesi->nama,
+                    'no_ktp' => $asesi->no_ktp,
+                    'nohp' => $asesi->nohp,
                     'tgl_daftar' => $asesi->tgl_daftar,
+                    'no_sertifikat' => $asesi->no_sertifikat,
+                    'tgl_sertifikat' => $asesi->tgl_sertifikat,
+                ],
+                'akun_login' => [
+                    'username' => $noPendaftaran,
+                    'no_ktp' => $asesi->no_ktp,
+                    'no_hp' => $asesi->nohp,
+                    'password' => $defaultPassword,
                 ],
             ], 201);
         } catch (\Exception $e) {

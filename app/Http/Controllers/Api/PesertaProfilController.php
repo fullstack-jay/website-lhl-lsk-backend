@@ -105,6 +105,8 @@ class PesertaProfilController extends Controller
                 // Dokumen
                 'foto' => $asesi->foto,
                 'foto_url' => $asesi->foto ? "{$baseUrl}/storage/foto_asesi/" . $asesi->foto : null,
+                'ktp' => $asesi->ktp,
+                'ktp_url' => $asesi->ktp ? "{$baseUrl}/storage/foto_asesi/" . $asesi->ktp : null,
                 'ijazah' => $asesi->ijazah,
                 'ijazah_url' => $asesi->ijazah ? "{$baseUrl}/storage/foto_asesi/" . $asesi->ijazah : null,
                 'transkrip' => $asesi->transkrip,
@@ -155,6 +157,7 @@ class PesertaProfilController extends Controller
             'no_sertifikat' => 'nullable|string|max:100',
             'tgl_sertifikat' => 'nullable|date',
             'foto' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:2048',
+            'ktp' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
             'ijazah' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
             'transkrip' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
             'suket' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:2048',
@@ -175,7 +178,7 @@ class PesertaProfilController extends Controller
         try {
             $noPendaftaran = $asesi ? $asesi->no_pendaftaran : ($user->no_induk ?: Asesi::generateNoPendaftaran());
 
-            $data = $request->except(['foto', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat']);
+            $data = $request->except(['foto', 'ktp', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat']);
             $data['no_pendaftaran'] = $noPendaftaran;
             if (!$asesi) {
                 $data['tgl_daftar'] = now()->toDateString();
@@ -185,7 +188,7 @@ class PesertaProfilController extends Controller
             }
 
             // Handle file uploads
-            foreach (['foto', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat'] as $fileKey) {
+            foreach (['foto', 'ktp', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat'] as $fileKey) {
                 if ($request->hasFile($fileKey)) {
                     $uploaded = $request->file($fileKey);
                     $savedPath = $uploaded->storeAs(

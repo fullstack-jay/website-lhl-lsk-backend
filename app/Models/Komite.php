@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
- * Personil Komite Teknis — mirror modul Penguji (Asesor) dengan 2 perbedaan:
+ * Personil Komite Teknis  mirror modul Penguji (Asesor) dengan 2 perbedaan:
  * (a) kolom unik `jabatan_komite` (Ketua/Sekretaris/Anggota),
  * (b) folder upload `foto_komite/` (vs foto_asesor/).
  * Sesuai docs/BACKEND_KOMITETEKNIS.md.
@@ -20,15 +20,15 @@ class Komite extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        // ═══ AKUN LOGIN ═══
+        //  AKUN LOGIN 
         'password',
-        'aktif',            // 'Y'/'N' — hanya Y yang bisa login
+        'aktif',            // 'Y'/'N'  hanya Y yang bisa login
 
-        // ═══ IDENTITAS PRIBADI ═══
+        //  IDENTITAS PRIBADI 
         'nama',
         'gelar_depan',
         'gelar_blk',
-        'jabatan_komite',   // ⭐ UNIK: Ketua/Sekretaris/Anggota
+        'jabatan_komite',   //  UNIK: Ketua/Sekretaris/Anggota
         'inisial',
         'jenis_kelamin',
         'agama',
@@ -39,11 +39,11 @@ class Komite extends Model
         'no_ktp',
         'foto',             // file di foto_komite/
 
-        // ═══ KONTAK ═══
+        //  KONTAK 
         'email',
         'no_hp',
 
-        // ═══ REGISTRASI / KEANGGOTAAN ═══
+        //  REGISTRASI / KEANGGOTAAN 
         'no_induk',
         'no_lisensi',
         'no_serisertifikat',
@@ -58,10 +58,10 @@ class Komite extends Model
         'fax_kantor',
         'email_kantor',
 
-        // ═══ ALAMAT ═══
+        //  ALAMAT 
         'alamat', 'RT', 'RW', 'kelurahan', 'kecamatan', 'kota', 'propinsi', 'kodepos',
 
-        // ═══ DOKUMEN ═══
+        //  DOKUMEN 
         'foto_sertifikat',
         'ktp', 'kk', 'ijazah', 'transkrip',
         'facebook',
@@ -84,17 +84,17 @@ class Komite extends Model
             ->withPivot('keputusan', 'waktu');
     }
 
-    // ════════════════════════════════════════════════════════════════
+    // 
     // Logika modul Komite (mirror Penguji, sesuai docs/BACKEND_KOMITETEKNIS.md)
-    // ════════════════════════════════════════════════════════════════
+    // 
 
-    /** Ambang batas "segera kadaluarsa": 180 hari (6 bulan) — idem Penguji. */
+    /** Ambang batas "segera kadaluarsa": 180 hari (6 bulan)  idem Penguji. */
     public const BATAS_SEGERA_KADALUARSA = 180;
 
     /**
      * Nama lengkap dengan gelar + sanitasi double-gelar
      * (improvement khusus komite: nama DB "Ir. Budi" + gelar_depan "Ir."
-     *  → "Ir. Budi, M.T." bukan "Ir. Ir. Budi, M.T.").
+     *   "Ir. Budi, M.T." bukan "Ir. Ir. Budi, M.T.").
      */
     public function getFullNameAttribute(): string
     {
@@ -124,7 +124,7 @@ class Komite extends Model
     }
 
     /**
-     * Status lisensi — idem Penguji: <0 KADALUARSA · 0..179 SEGERA · >=180 AKTIF.
+     * Status lisensi  idem Penguji: <0 KADALUARSA  0..179 SEGERA  >=180 AKTIF.
      */
     public function getStatusLisensiAttribute(): string
     {
@@ -186,4 +186,25 @@ class Komite extends Model
         }
         return $query;
     }
+    /**
+     * Auto-generate Nomor Induk Komite
+     * Format: KOMITE001, KOMITE002, ...
+     */
+    public static function generateNoInduk(): string
+    {
+        $prefix = 'KOMITE';
+        $last = self::where('no_induk', 'like', $prefix . '%')
+            ->orderByRaw('LENGTH(no_induk) DESC')
+            ->orderBy('no_induk', 'desc')
+            ->first();
+
+        if ($last && preg_match('/KOMITE(\d+)/i', $last->no_induk, $matches)) {
+            $seq = (int) $matches[1] + 1;
+        } else {
+            $seq = 1;
+        }
+
+        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    }
+
 }

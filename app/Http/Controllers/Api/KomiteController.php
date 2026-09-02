@@ -342,7 +342,7 @@ class KomiteController extends Controller
                 'tgl_lahir' => $request->tgl_lahir,
                 'email' => $request->email,
                 'no_hp' => $request->no_hp,
-                'no_induk' => $request->no_induk,
+                'no_induk' => $request->filled('no_induk') ? $request->no_induk : Komite::generateNoInduk(),
                 'no_lisensi' => $request->no_lisensi,
                 'masaberlaku_lisensi' => $request->masaberlaku_lisensi,
                 'pendidikan_terakhir' => $request->pendidikan_terakhir,

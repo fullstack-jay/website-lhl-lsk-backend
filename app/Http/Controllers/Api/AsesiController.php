@@ -492,6 +492,8 @@ class AsesiController extends Controller
                 'foto'                => $data['foto'] ?? null,
                 'level'               => 'user',
                 'blokir'              => 'N',
+                'id_session'          => md5($noPendaftaran),
+                'waktu'               => now(),
             ];
 
             if (!$user) {

@@ -138,9 +138,9 @@ class Asesor extends Model
         return false;
     }
 
-    // ════════════════════════════════════════════════════════════════
+    // 
     // Logika modul Penguji (sesuai docs/BACKEND_PENGUJI.md)
-    // ════════════════════════════════════════════════════════════════
+    // 
 
     /** Ambang batas "segera kadaluarsa": 180 hari (6 bulan). */
     public const BATAS_SEGERA_KADALUARSA = 180;
@@ -158,8 +158,8 @@ class Asesor extends Model
     }
 
     /**
-     * Status lisensi: kadaluarsa / segera / aktif — padanan logika warna kartu.
-     * <0 → KADALUARSA (merah) · 0..179 → SEGERA (kuning) · >=180 → AKTIF (hijau)
+     * Status lisensi: kadaluarsa / segera / aktif  padanan logika warna kartu.
+     * <0  KADALUARSA (merah)  0..179  SEGERA (kuning)  >=180  AKTIF (hijau)
      */
     public function getStatusLisensiAttribute(): string
     {
@@ -183,7 +183,7 @@ class Asesor extends Model
 
     /**
      * Cek kelengkapan dokumen pokok: foto, ktp, kk, ijazah, transkrip.
-     * Semua ada → lengkap=true; else listing yang kurang.
+     * Semua ada  lengkap=true; else listing yang kurang.
      */
     public function getKelengkapanDokumenAttribute(): array
     {
@@ -203,4 +203,25 @@ class Asesor extends Model
             'kurang' => $kurang,
         ];
     }
+    /**
+     * Auto-generate Nomor Induk Penguji
+     * Format: REG.ASR.001, REG.ASR.002, ...
+     */
+    public static function generateNoInduk(): string
+    {
+        $prefix = 'REG.ASR.';
+        $last = self::where('no_induk', 'like', $prefix . '%')
+            ->orderByRaw('LENGTH(no_induk) DESC')
+            ->orderBy('no_induk', 'desc')
+            ->first();
+
+        if ($last && preg_match('/REG\.ASR\.(\d+)/i', $last->no_induk, $matches)) {
+            $seq = (int) $matches[1] + 1;
+        } else {
+            $seq = 1;
+        }
+
+        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    }
+
 }

@@ -90,10 +90,18 @@ class User extends Authenticatable implements MustVerifyEmail
         'pendidikan_terakhir',
         'email',
         'alamat',
+        'RT',
+        'RW',
+        'kelurahan',
+        'kecamatan',
+        'kota',
+        'propinsi',
         'no_telp',
         'foto',
         'level',
         'blokir',
+        'id_session',
+        'waktu',
     ];
 
     /**

@@ -116,35 +116,45 @@ class UserManagementController extends Controller
                 ]);
                 DB::table('asesor')->where('no_ktp', $targetNik)->delete();
                 DB::table('asesi')->where('no_ktp', $targetNik)->delete();
-            } elseif ($user->level === 'user' && $targetNik) {
+            } elseif ($user->level === 'user') {
                 // sync ke tabel asesi (Data Peserta)
-                $asesor = DB::table('asesor')->where('no_ktp', $targetNik)->first();
-                $komite = DB::table('komite')->where('no_ktp', $targetNik)->first();
-                $src = $asesor ?: $komite;
+                $noPendaftaran = $user->no_induk ?: $user->username;
+                $existingAsesi = DB::table('asesi')
+                    ->where('no_pendaftaran', $noPendaftaran)
+                    ->orWhere('no_ktp', $targetNik)
+                    ->first();
 
-                $asesiData = [
-                    'no_pendaftaran' => $user->no_induk ?: $targetNik,
-                    'password' => $user->password,
-                    'nama' => $user->nama_lengkap ?: ($src->nama ?? 'Peserta'),
-                    'tmp_lahir' => $user->tmp_lahir ?: ($src->tmp_lahir ?? null),
-                    'tgl_lahir' => $user->tgl_lahir ? date('Y-m-d', strtotime($user->tgl_lahir)) : ($src->tgl_lahir ?? null),
-                    'email' => $user->email ?: ($src->email ?? null),
-                    'nohp' => $user->no_telp ?: ($src->no_hp ?? null),
-                    'no_ktp' => $targetNik,
-                    'alamat' => $user->alamat ?: ($src->alamat ?? null),
-                    'pendidikan' => $user->pendidikan_terakhir ?: ($src->pendidikan_terakhir ?? null),
-                    'jenis_kelamin' => $src->jenis_kelamin ?? 'L',
-                    'foto' => $user->foto ?: ($src->foto ?? null),
-                    'tgl_daftar' => date('Y-m-d'),
-                    'angkatan' => (int) date('Y'),
-                    'blokir' => $user->blokir ?: 'N',
-                    'verifikasi' => 'V',
-                    'waktu' => now(),
+                $asesiUpdateData = [
+                    'no_pendaftaran' => $noPendaftaran,
+                    'nama'           => $user->nama_lengkap ?: 'Peserta',
+                    'no_ktp'         => $targetNik,
+                    'email'          => $user->email ?: null,
+                    'nohp'           => $user->no_telp ?: null,
+                    'blokir'         => $user->blokir ?: 'N',
                 ];
 
-                DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
-                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                if ($user->tmp_lahir) $asesiUpdateData['tmp_lahir'] = $user->tmp_lahir;
+                if ($user->tgl_lahir) $asesiUpdateData['tgl_lahir'] = date('Y-m-d', strtotime($user->tgl_lahir));
+                if ($user->alamat) $asesiUpdateData['alamat'] = $user->alamat;
+                if ($user->pendidikan_terakhir) $asesiUpdateData['pendidikan'] = $user->pendidikan_terakhir;
+                if ($user->foto) $asesiUpdateData['foto'] = $user->foto;
+                if ($user->password) $asesiUpdateData['password'] = $user->password;
+
+                if ($existingAsesi) {
+                    DB::table('asesi')->where('id', $existingAsesi->id)->update($asesiUpdateData);
+                } else {
+                    $asesiUpdateData['tgl_daftar'] = date('Y-m-d');
+                    $asesiUpdateData['angkatan'] = (int) date('Y');
+                    $asesiUpdateData['verifikasi'] = 'V';
+                    $asesiUpdateData['jenis_kelamin'] = 'L';
+                    $asesiUpdateData['waktu'] = now();
+                    DB::table('asesi')->insert($asesiUpdateData);
+                }
+
+                if ($targetNik) {
+                    DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                    DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                }
             }
         }
 
@@ -231,35 +241,45 @@ class UserManagementController extends Controller
                 ]);
                 DB::table('asesor')->where('no_ktp', $targetNik)->delete();
                 DB::table('asesi')->where('no_ktp', $targetNik)->delete();
-            } elseif ($user->level === 'user' && $targetNik) {
+            } elseif ($user->level === 'user') {
                 // sync ke tabel asesi (Data Peserta)
-                $asesor = DB::table('asesor')->where('no_ktp', $targetNik)->first();
-                $komite = DB::table('komite')->where('no_ktp', $targetNik)->first();
-                $src = $asesor ?: $komite;
+                $noPendaftaran = $user->no_induk ?: $user->username;
+                $existingAsesi = DB::table('asesi')
+                    ->where('no_pendaftaran', $noPendaftaran)
+                    ->orWhere('no_ktp', $targetNik)
+                    ->first();
 
-                $asesiData = [
-                    'no_pendaftaran' => $user->no_induk ?: $targetNik,
-                    'password' => $user->password,
-                    'nama' => $user->nama_lengkap ?: ($src->nama ?? 'Peserta'),
-                    'tmp_lahir' => $user->tmp_lahir ?: ($src->tmp_lahir ?? null),
-                    'tgl_lahir' => $user->tgl_lahir ? date('Y-m-d', strtotime($user->tgl_lahir)) : ($src->tgl_lahir ?? null),
-                    'email' => $user->email ?: ($src->email ?? null),
-                    'nohp' => $user->no_telp ?: ($src->no_hp ?? null),
-                    'no_ktp' => $targetNik,
-                    'alamat' => $user->alamat ?: ($src->alamat ?? null),
-                    'pendidikan' => $user->pendidikan_terakhir ?: ($src->pendidikan_terakhir ?? null),
-                    'jenis_kelamin' => $src->jenis_kelamin ?? 'L',
-                    'foto' => $user->foto ?: ($src->foto ?? null),
-                    'tgl_daftar' => date('Y-m-d'),
-                    'angkatan' => (int) date('Y'),
-                    'blokir' => $user->blokir ?: 'N',
-                    'verifikasi' => 'V',
-                    'waktu' => now(),
+                $asesiUpdateData = [
+                    'no_pendaftaran' => $noPendaftaran,
+                    'nama'           => $user->nama_lengkap ?: 'Peserta',
+                    'no_ktp'         => $targetNik,
+                    'email'          => $user->email ?: null,
+                    'nohp'           => $user->no_telp ?: null,
+                    'blokir'         => $user->blokir ?: 'N',
                 ];
 
-                DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
-                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                if ($user->tmp_lahir) $asesiUpdateData['tmp_lahir'] = $user->tmp_lahir;
+                if ($user->tgl_lahir) $asesiUpdateData['tgl_lahir'] = date('Y-m-d', strtotime($user->tgl_lahir));
+                if ($user->alamat) $asesiUpdateData['alamat'] = $user->alamat;
+                if ($user->pendidikan_terakhir) $asesiUpdateData['pendidikan'] = $user->pendidikan_terakhir;
+                if ($user->foto) $asesiUpdateData['foto'] = $user->foto;
+                if ($user->password) $asesiUpdateData['password'] = $user->password;
+
+                if ($existingAsesi) {
+                    DB::table('asesi')->where('id', $existingAsesi->id)->update($asesiUpdateData);
+                } else {
+                    $asesiUpdateData['tgl_daftar'] = date('Y-m-d');
+                    $asesiUpdateData['angkatan'] = (int) date('Y');
+                    $asesiUpdateData['verifikasi'] = 'V';
+                    $asesiUpdateData['jenis_kelamin'] = 'L';
+                    $asesiUpdateData['waktu'] = now();
+                    DB::table('asesi')->insert($asesiUpdateData);
+                }
+
+                if ($targetNik) {
+                    DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                    DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                }
             }
 
             return response()->json([
@@ -387,35 +407,45 @@ class UserManagementController extends Controller
                 ]);
                 DB::table('asesor')->where('no_ktp', $targetNik)->delete();
                 DB::table('asesi')->where('no_ktp', $targetNik)->delete();
-            } elseif ($user->level === 'user' && $targetNik) {
+            } elseif ($user->level === 'user') {
                 // sync ke tabel asesi (Data Peserta)
-                $asesor = DB::table('asesor')->where('no_ktp', $targetNik)->first();
-                $komite = DB::table('komite')->where('no_ktp', $targetNik)->first();
-                $src = $asesor ?: $komite;
+                $noPendaftaran = $user->no_induk ?: $user->username;
+                $existingAsesi = DB::table('asesi')
+                    ->where('no_pendaftaran', $noPendaftaran)
+                    ->orWhere('no_ktp', $targetNik)
+                    ->first();
 
-                $asesiData = [
-                    'no_pendaftaran' => $user->no_induk ?: $targetNik,
-                    'password' => $user->password,
-                    'nama' => $user->nama_lengkap ?: ($src->nama ?? 'Peserta'),
-                    'tmp_lahir' => $user->tmp_lahir ?: ($src->tmp_lahir ?? null),
-                    'tgl_lahir' => $user->tgl_lahir ? date('Y-m-d', strtotime($user->tgl_lahir)) : ($src->tgl_lahir ?? null),
-                    'email' => $user->email ?: ($src->email ?? null),
-                    'nohp' => $user->no_telp ?: ($src->no_hp ?? null),
-                    'no_ktp' => $targetNik,
-                    'alamat' => $user->alamat ?: ($src->alamat ?? null),
-                    'pendidikan' => $user->pendidikan_terakhir ?: ($src->pendidikan_terakhir ?? null),
-                    'jenis_kelamin' => $src->jenis_kelamin ?? 'L',
-                    'foto' => $user->foto ?: ($src->foto ?? null),
-                    'tgl_daftar' => date('Y-m-d'),
-                    'angkatan' => (int) date('Y'),
-                    'blokir' => $user->blokir ?: 'N',
-                    'verifikasi' => 'V',
-                    'waktu' => now(),
+                $asesiUpdateData = [
+                    'no_pendaftaran' => $noPendaftaran,
+                    'nama'           => $user->nama_lengkap ?: 'Peserta',
+                    'no_ktp'         => $targetNik,
+                    'email'          => $user->email ?: null,
+                    'nohp'           => $user->no_telp ?: null,
+                    'blokir'         => $user->blokir ?: 'N',
                 ];
 
-                DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
-                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                if ($user->tmp_lahir) $asesiUpdateData['tmp_lahir'] = $user->tmp_lahir;
+                if ($user->tgl_lahir) $asesiUpdateData['tgl_lahir'] = date('Y-m-d', strtotime($user->tgl_lahir));
+                if ($user->alamat) $asesiUpdateData['alamat'] = $user->alamat;
+                if ($user->pendidikan_terakhir) $asesiUpdateData['pendidikan'] = $user->pendidikan_terakhir;
+                if ($user->foto) $asesiUpdateData['foto'] = $user->foto;
+                if ($user->password) $asesiUpdateData['password'] = $user->password;
+
+                if ($existingAsesi) {
+                    DB::table('asesi')->where('id', $existingAsesi->id)->update($asesiUpdateData);
+                } else {
+                    $asesiUpdateData['tgl_daftar'] = date('Y-m-d');
+                    $asesiUpdateData['angkatan'] = (int) date('Y');
+                    $asesiUpdateData['verifikasi'] = 'V';
+                    $asesiUpdateData['jenis_kelamin'] = 'L';
+                    $asesiUpdateData['waktu'] = now();
+                    DB::table('asesi')->insert($asesiUpdateData);
+                }
+
+                if ($targetNik) {
+                    DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                    DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                }
             }
 
             return response()->json([
@@ -542,35 +572,45 @@ class UserManagementController extends Controller
                 ]);
                 DB::table('asesor')->where('no_ktp', $targetNik)->delete();
                 DB::table('asesi')->where('no_ktp', $targetNik)->delete();
-            } elseif ($user->level === 'user' && $targetNik) {
+            } elseif ($user->level === 'user') {
                 // sync ke tabel asesi (Data Peserta)
-                $asesor = DB::table('asesor')->where('no_ktp', $targetNik)->first();
-                $komite = DB::table('komite')->where('no_ktp', $targetNik)->first();
-                $src = $asesor ?: $komite;
+                $noPendaftaran = $user->no_induk ?: $user->username;
+                $existingAsesi = DB::table('asesi')
+                    ->where('no_pendaftaran', $noPendaftaran)
+                    ->orWhere('no_ktp', $targetNik)
+                    ->first();
 
-                $asesiData = [
-                    'no_pendaftaran' => $user->no_induk ?: $targetNik,
-                    'password' => $user->password,
-                    'nama' => $user->nama_lengkap ?: ($src->nama ?? 'Peserta'),
-                    'tmp_lahir' => $user->tmp_lahir ?: ($src->tmp_lahir ?? null),
-                    'tgl_lahir' => $user->tgl_lahir ? date('Y-m-d', strtotime($user->tgl_lahir)) : ($src->tgl_lahir ?? null),
-                    'email' => $user->email ?: ($src->email ?? null),
-                    'nohp' => $user->no_telp ?: ($src->no_hp ?? null),
-                    'no_ktp' => $targetNik,
-                    'alamat' => $user->alamat ?: ($src->alamat ?? null),
-                    'pendidikan' => $user->pendidikan_terakhir ?: ($src->pendidikan_terakhir ?? null),
-                    'jenis_kelamin' => $src->jenis_kelamin ?? 'L',
-                    'foto' => $user->foto ?: ($src->foto ?? null),
-                    'tgl_daftar' => date('Y-m-d'),
-                    'angkatan' => (int) date('Y'),
-                    'blokir' => $user->blokir ?: 'N',
-                    'verifikasi' => 'V',
-                    'waktu' => now(),
+                $asesiUpdateData = [
+                    'no_pendaftaran' => $noPendaftaran,
+                    'nama'           => $user->nama_lengkap ?: 'Peserta',
+                    'no_ktp'         => $targetNik,
+                    'email'          => $user->email ?: null,
+                    'nohp'           => $user->no_telp ?: null,
+                    'blokir'         => $user->blokir ?: 'N',
                 ];
 
-                DB::table('asesi')->updateOrInsert(['no_ktp' => $targetNik], $asesiData);
-                DB::table('asesor')->where('no_ktp', $targetNik)->delete();
-                DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                if ($user->tmp_lahir) $asesiUpdateData['tmp_lahir'] = $user->tmp_lahir;
+                if ($user->tgl_lahir) $asesiUpdateData['tgl_lahir'] = date('Y-m-d', strtotime($user->tgl_lahir));
+                if ($user->alamat) $asesiUpdateData['alamat'] = $user->alamat;
+                if ($user->pendidikan_terakhir) $asesiUpdateData['pendidikan'] = $user->pendidikan_terakhir;
+                if ($user->foto) $asesiUpdateData['foto'] = $user->foto;
+                if ($user->password) $asesiUpdateData['password'] = $user->password;
+
+                if ($existingAsesi) {
+                    DB::table('asesi')->where('id', $existingAsesi->id)->update($asesiUpdateData);
+                } else {
+                    $asesiUpdateData['tgl_daftar'] = date('Y-m-d');
+                    $asesiUpdateData['angkatan'] = (int) date('Y');
+                    $asesiUpdateData['verifikasi'] = 'V';
+                    $asesiUpdateData['jenis_kelamin'] = 'L';
+                    $asesiUpdateData['waktu'] = now();
+                    DB::table('asesi')->insert($asesiUpdateData);
+                }
+
+                if ($targetNik) {
+                    DB::table('asesor')->where('no_ktp', $targetNik)->delete();
+                    DB::table('komite')->where('no_ktp', $targetNik)->delete();
+                }
             }
         }
 

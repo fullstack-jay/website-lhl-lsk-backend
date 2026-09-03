@@ -200,21 +200,67 @@ class AsesiBaruController extends Controller
             : null;
 
         // 4. Dokumen wajib DINAMIS dari asesi_persyaratanpokok (pola shortcode)
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
         $dokumenWajib = DB::table('asesi_persyaratanpokok')
             ->where('wajib', 'Y')
             ->where('aktif', 'Y')
             ->get()
-            ->map(function ($p) use ($asesi) {
+            ->map(function ($p) use ($asesi, $verifDok) {
                 $shortcode = $p->shortcode;   // shortcode = nama kolom aktual tabel asesi
                 $file = $asesi->{$shortcode} ?? null;
+                if (empty($file)) {
+                    if (in_array($shortcode, ['sertifikat_amdal', 'sertifikat'])) {
+                        $file = $asesi->sertifikat_amdal ?: $asesi->sertifikat;
+                    } elseif (in_array($shortcode, ['bukti_keterlibatan', 'suket'])) {
+                        $file = $asesi->bukti_keterlibatan ?: $asesi->suket;
+                    } elseif (in_array($shortcode, ['sertifikat_kompetensi_lain', 'transkrip'])) {
+                        $file = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
+                    }
+                }
+
+                // Status "Ada" tergantung apakah di Gambar 1 sudah diverifikasi
+                $statusVerif = $verifDok[$shortcode] ?? null;
+                $isVerified = !empty($file) && ($statusVerif === 'terverifikasi' || $asesi->verifikasi === 'V');
+
                 return [
                     'persyaratan' => $p->persyaratan,
                     'shortcode' => $shortcode,
                     'file' => $file,
                     'url' => $file ? asset(self::DIR_ASESI . '/' . $file) : null,
-                    'ada' => !empty($file),   // badge hijau "Ada" / merah "Belum Ada"
+                    'ada' => $isVerified,   // badge hijau "Ada" jika sudah diverifikasi di Gambar 1
+                    'uploaded' => !empty($file),
+                    'verifikasi_status' => $statusVerif ?: (!empty($file) ? 'terupload' : 'belum_ada'),
                 ];
             });
+
+        // 4b. Dokumen tambahan (Opsional)
+        $tambahanConfig = [
+            'cv' => 'Curriculum Vitae (CV)',
+            'foto' => 'Pas Foto (3x4)',
+            'ktp' => 'Scan KTP',
+            'sertifikat_kompetensi_lain' => 'Sertifikat Pelatihan Relevan',
+            'form_pendaftaran' => 'Formulir Pendaftaran',
+            'sertifikat_atpa_ktpa' => 'Sertifikat ATPA/KTPA Sebelumnya',
+        ];
+
+        $dokumenTambahan = collect($tambahanConfig)->map(function ($label, $shortcode) use ($asesi, $verifDok) {
+            $file = $asesi->{$shortcode} ?? null;
+            if (empty($file) && $shortcode === 'sertifikat_kompetensi_lain') {
+                $file = $asesi->transkrip;
+            }
+            $statusVerif = $verifDok[$shortcode] ?? null;
+            return [
+                'persyaratan' => $label,
+                'shortcode' => $shortcode,
+                'file' => $file,
+                'url' => $file ? asset(self::DIR_ASESI . '/' . $file) : null,
+                'ada' => !empty($file),
+                'verifikasi_status' => $statusVerif ?: (!empty($file) ? 'terupload' : 'belum_ada'),
+            ];
+        })->values();
 
         // 5. Detail per pendaftaran skema (untuk Tab 2 & 3)
         $detailSkema = $pendaftaran->map(function ($m) {
@@ -263,6 +309,7 @@ class AsesiBaruController extends Controller
             'wilayah_uji' => $wilayahLabel,
 
             'dokumen_wajib' => $dokumenWajib,
+            'dokumen_tambahan' => $dokumenTambahan,
 
             'statistik' => $statistik,
             'pendaftaran_skema' => $detailSkema,

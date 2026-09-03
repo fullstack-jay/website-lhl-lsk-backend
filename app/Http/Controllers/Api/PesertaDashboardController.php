@@ -81,6 +81,8 @@ class PesertaDashboardController extends Controller
                     ]),
                     'ringkasan' => [
                         'dokumen_wajib' => ['ada' => 0, 'total' => 0],
+                        'profil_terverifikasi' => false,   // tanpa asesi = amber (fail-safe)
+                        'verifikasi' => 'P',
                         'profil_perlu_lengkapi' => true,
                         'total_skema_diikuti' => 0,
                         'sertifikat_terbit' => 0,
@@ -94,21 +96,28 @@ class PesertaDashboardController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
-        // ── 4. Dokumen wajib DINAMIS dari devsyarat ──
+        // ── 4. Dokumen wajib DINAMIS dari devsyarat (basis 4 Syarat Pokok) ──
         $wajib = AsesiPersyaratanpokok::wajib()->aktif()->orderBy('id')->get();
         $dokumenAda = 0;
         foreach ($wajib as $p) {
-            if (!empty($asesi->{$p->shortcode})) {
+            if ($this->hasDocumentFile($asesi, $p->shortcode)) {
                 $dokumenAda++;
             }
         }
         $dokLengkap = $wajib->count() > 0 && $dokumenAda === $wajib->count();
 
-        // Zero-date guard tgl_lahir (idem PESERTA_ROLE.md §2.1)
+        // Zero-date guard tgl_lahir (idem PESERTA_ROLE.md §2.1) & kelengkapan dokumen
         $tglLahir = (string) $asesi->tgl_lahir;
-        $profilPerluLengkapi = empty($tglLahir) || $tglLahir === '0000-00-00';
-        if ($profilPerluLengkapi) {
+        $profilPerluLengkapi = empty($tglLahir) || $tglLahir === '0000-00-00' || !$dokLengkap;
+        if (empty($tglLahir) || $tglLahir === '0000-00-00') {
             $dokLengkap = false;
+        }
+
+        // ── Verifikasi profil (ACC admin) — docs/LOGIC_VERIFIKASI_DOC_PESERTA.md §4 ──
+        // hijau HANYA bila asesi.verifikasi='V'; zero-date guard menang walau 'V'
+        $profilTerverifikasi = ($asesi->verifikasi === 'V');
+        if ($profilPerluLengkapi) {
+            $profilTerverifikasi = false;
         }
 
         // ── 5. Pembayaran skema aktif ──
@@ -214,6 +223,8 @@ class PesertaDashboardController extends Controller
 
                 'ringkasan' => [
                     'dokumen_wajib' => ['ada' => $dokumenAda, 'total' => $wajib->count()],
+                    'profil_terverifikasi' => $profilTerverifikasi,   // ⭐ ACC admin (verifikasi='V')
+                    'verifikasi' => $asesi->verifikasi,               // ⭐ nilai mentah 'P'|'V'
                     'profil_perlu_lengkapi' => $profilPerluLengkapi,
                     'total_skema_diikuti' => AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)->count(),
                     'sertifikat_terbit' => $sertifikat ? 1 : 0,
@@ -341,5 +352,18 @@ class PesertaDashboardController extends Controller
             'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
         $t = strtotime($d);
         return date('j', $t) . ' ' . $bulan[(int) date('n', $t)] . ' ' . date('Y', $t);
+    }
+    private function hasDocumentFile(?Asesi $asesi, string $shortcode): bool
+    {
+        if (!$asesi) {
+            return false;
+        }
+
+        return match ($shortcode) {
+            'sertifikat_amdal', 'sertifikat' => !empty($asesi->sertifikat_amdal) || !empty($asesi->sertifikat),
+            'bukti_keterlibatan', 'suket' => !empty($asesi->bukti_keterlibatan) || !empty($asesi->suket),
+            'sertifikat_kompetensi_lain', 'transkrip' => !empty($asesi->sertifikat_kompetensi_lain) || !empty($asesi->transkrip),
+            default => !empty($asesi->{$shortcode}),
+        };
     }
 }

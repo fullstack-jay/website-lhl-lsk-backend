@@ -23,7 +23,7 @@ class AsesiController extends Controller
      */
     public function index(Request $request)
     {
-        $tab = $request->get('tab', 'all');
+        $tab = str_replace('-', '_', $request->get('tab', 'all'));
 
         // Route to appropriate tab handler
         switch ($tab) {
@@ -83,7 +83,10 @@ class AsesiController extends Controller
             ->distinct()
             ->pluck('id_asesi');
 
-        $query = Asesi::whereIn('no_pendaftaran', $asesiIds);
+        $query = Asesi::where(function ($q) use ($asesiIds) {
+            $q->whereIn('no_pendaftaran', $asesiIds)
+              ->orWhereIn('id', $asesiIds);
+        });
 
         // Apply additional filters
         $this->applyCommonFilters($query, $request);
@@ -107,11 +110,14 @@ class AsesiController extends Controller
     private function getTabBelumKompeten(Request $request)
     {
         // Get distinct asesi IDs from asesi_asesmen where status_asesmen='BK'
-        $asesiIds = AsesiAsesmen::where('status_asesmen', 'BK')
+        $asesiIds = AsesiAsesmen::whereIn('status_asesmen', ['BK', 'TL'])
             ->distinct()
             ->pluck('id_asesi');
 
-        $query = Asesi::whereIn('no_pendaftaran', $asesiIds);
+        $query = Asesi::where(function ($q) use ($asesiIds) {
+            $q->whereIn('no_pendaftaran', $asesiIds)
+              ->orWhereIn('id', $asesiIds);
+        });
 
         // Apply additional filters
         $this->applyCommonFilters($query, $request);
@@ -150,10 +156,108 @@ class AsesiController extends Controller
             $query->byPropinsi($request->propinsi);
         }
 
-        // Sorting - by default sort by nama ASC
-        $sortBy = $request->get('sort_by', 'nama');
-        $sortOrder = $request->get('sort_order', 'asc');
-        $query->orderBy($sortBy, $sortOrder);
+        // Filter by kelengkapan dan status dokumen
+        $filterDokumen = $request->get('dokumen_pokok');
+        if ($filterDokumen === 'lengkap') {
+            $query->whereRaw("
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
+            ");
+        } elseif ($filterDokumen === 'ada_verifikasi') {
+            // Ada dokumen yang sudah diverifikasi (walaupun baru 1 dokumen)
+            $query->whereRaw("
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.foto')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ktp')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.cv')) = 'terverifikasi'
+            ");
+        } elseif ($filterDokumen === 'sudah_upload') {
+            // Sudah upload dokumen (berkas terupload tapi belum/sebagian diverifikasi)
+            $query->whereRaw("
+                (ijazah IS NOT NULL AND TRIM(ijazah) != '') OR
+                (sertifikat_amdal IS NOT NULL AND TRIM(sertifikat_amdal) != '') OR
+                (sertifikat IS NOT NULL AND TRIM(sertifikat) != '') OR
+                (bukti_keterlibatan IS NOT NULL AND TRIM(bukti_keterlibatan) != '') OR
+                (suket IS NOT NULL AND TRIM(suket) != '') OR
+                (dokumen_amdal IS NOT NULL AND TRIM(dokumen_amdal) != '') OR
+                (foto IS NOT NULL AND TRIM(foto) != '') OR
+                (ktp IS NOT NULL AND TRIM(ktp) != '') OR
+                (cv IS NOT NULL AND TRIM(cv) != '')
+            ");
+        } elseif ($filterDokumen === 'belum_upload') {
+            // Belum upload berkas sama sekali
+            $query->whereRaw("
+                (ijazah IS NULL OR TRIM(ijazah) = '') AND
+                (sertifikat_amdal IS NULL OR TRIM(sertifikat_amdal) = '') AND
+                (sertifikat IS NULL OR TRIM(sertifikat) = '') AND
+                (bukti_keterlibatan IS NULL OR TRIM(bukti_keterlibatan) = '') AND
+                (suket IS NULL OR TRIM(suket) = '') AND
+                (dokumen_amdal IS NULL OR TRIM(dokumen_amdal) = '') AND
+                (foto IS NULL OR TRIM(foto) = '') AND
+                (ktp IS NULL OR TRIM(ktp) = '') AND
+                (cv IS NULL OR TRIM(cv) = '')
+            ");
+        } elseif ($filterDokumen === 'belum_lengkap') {
+            $query->whereRaw("NOT (
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
+            )");
+        }
+
+        // Prioritas Urutan (Sorting Cerdas):
+        // 1. Lengkap 4/4 Terverifikasi (1000 poin)
+        // 2. Ada dokumen terverifikasi (50 poin per berkas terverifikasi, walaupun baru 1)
+        // 3. Sudah upload dokumen (5 poin per berkas yang diunggah)
+        $query->orderByRaw("
+            (
+                CASE 
+                    WHEN (
+                        JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
+                        JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
+                        JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
+                        JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
+                    ) THEN 1000
+                    ELSE 0
+                END
+                +
+                (
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.foto')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ktp')) = 'terverifikasi' THEN 50 ELSE 0 END) +
+                    (CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.cv')) = 'terverifikasi' THEN 50 ELSE 0 END)
+                )
+                +
+                (
+                    (CASE WHEN ijazah IS NOT NULL AND TRIM(ijazah) != '' THEN 5 ELSE 0 END) +
+                    (CASE WHEN (sertifikat_amdal IS NOT NULL AND TRIM(sertifikat_amdal) != '') OR (sertifikat IS NOT NULL AND TRIM(sertifikat) != '') THEN 5 ELSE 0 END) +
+                    (CASE WHEN (bukti_keterlibatan IS NOT NULL AND TRIM(bukti_keterlibatan) != '') OR (suket IS NOT NULL AND TRIM(suket) != '') THEN 5 ELSE 0 END) +
+                    (CASE WHEN dokumen_amdal IS NOT NULL AND TRIM(dokumen_amdal) != '' THEN 5 ELSE 0 END) +
+                    (CASE WHEN foto IS NOT NULL AND TRIM(foto) != '' THEN 5 ELSE 0 END) +
+                    (CASE WHEN ktp IS NOT NULL AND TRIM(ktp) != '' THEN 5 ELSE 0 END) +
+                    (CASE WHEN cv IS NOT NULL AND TRIM(cv) != '' THEN 5 ELSE 0 END)
+                )
+            ) DESC
+        ");
+
+        // Prioritas 2: Hindari data kosong/rusak di urutan awal
+        $query->orderByRaw("CASE WHEN nama IS NULL OR TRIM(nama) = '' THEN 1 ELSE 0 END ASC");
+
+        // Prioritas 3: Sorting nama / id
+        if ($request->has('sort_by')) {
+            $query->orderBy($request->get('sort_by'), $request->get('sort_order', 'asc'));
+        } else {
+            $query->orderBy('id', 'desc');
+        }
 
         // Pagination
         return $this->paginateAndRespond($query, $request, 'belum_verifikasi');
@@ -785,13 +889,38 @@ class AsesiController extends Controller
         }
 
         try {
-            $asesi->update([
-                'verifikasi' => $request->verifikasi, // P or V
-            ]);
+            $newVerifikasi = $request->verifikasi; // 'V' or 'P' or 'D'
+
+            if ($newVerifikasi === 'V') {
+                // Pastikan 4 dokumen pokok sudah terverifikasi
+                $verif = is_array($asesi->verifikasi_dokumen)
+                    ? $asesi->verifikasi_dokumen
+                    : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+                $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
+                $allVerified = true;
+                foreach ($wajibShortcodes as $sc) {
+                    if (($verif[$sc] ?? '') !== 'terverifikasi') {
+                        $allVerified = false;
+                        break;
+                    }
+                }
+                if (!$allVerified) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Semua 4 dokumen persyaratan pokok harus terverifikasi terlebih dahulu sebelum disetujui.',
+                    ], 422);
+                }
+            }
+
+            $asesi->verifikasi = $newVerifikasi;
+            $asesi->save();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Status verifikasi berhasil diperbarui',
+                'data' => [
+                    'verifikasi' => $asesi->verifikasi,
+                ],
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -806,6 +935,112 @@ class AsesiController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
+    /**
+     * Update status verifikasi dokumen persyaratan pokok
+     * PUT /api/v1/admin/peserta/{noPendaftaran}/verifikasi-dokumen
+     */
+    public function updateVerifikasiDokumen(Request $request, $noPendaftaran)
+    {
+        $asesi = Asesi::where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('id', $noPendaftaran)
+            ->first();
+
+        if (!$asesi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $shortcode = $request->input('shortcode');
+        $status = $request->input('status'); // 'terverifikasi', 'ditolak', 'terupload'
+
+        if (!$shortcode || !$status) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter shortcode dan status diperlukan',
+            ], 422);
+        }
+
+        $verif = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $verif[$shortcode] = $status;
+        $asesi->verifikasi_dokumen = $verif;
+
+        // Jika dokumen ditolak, otomatis file yang dikirim dihapus dari database & storage
+        if ($status === 'ditolak') {
+            $deletedFile = null;
+            if ($shortcode === 'ijazah') {
+                $deletedFile = $asesi->ijazah;
+                $asesi->ijazah = null;
+            } elseif ($shortcode === 'sertifikat_amdal' || $shortcode === 'sertifikat') {
+                $deletedFile = $asesi->sertifikat_amdal ?: $asesi->sertifikat;
+                $asesi->sertifikat_amdal = null;
+                $asesi->sertifikat = null;
+            } elseif ($shortcode === 'bukti_keterlibatan' || $shortcode === 'suket') {
+                $deletedFile = $asesi->bukti_keterlibatan ?: $asesi->suket;
+                $asesi->bukti_keterlibatan = null;
+                $asesi->suket = null;
+            } elseif ($shortcode === 'dokumen_amdal') {
+                $deletedFile = $asesi->dokumen_amdal;
+                $asesi->dokumen_amdal = null;
+            } elseif ($shortcode === 'sertifikat_kompetensi_lain' || $shortcode === 'transkrip') {
+                $deletedFile = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
+                $asesi->sertifikat_kompetensi_lain = null;
+                $asesi->transkrip = null;
+            } elseif (isset($asesi->{$shortcode})) {
+                $deletedFile = $asesi->{$shortcode};
+                $asesi->{$shortcode} = null;
+            }
+
+            if ($deletedFile && !str_starts_with($deletedFile, '/private/var')) {
+                $paths = [
+                    public_path('foto_asesi/' . $deletedFile),
+                    storage_path('app/public/foto_asesi/' . $deletedFile),
+                    storage_path('app/' . $deletedFile),
+                ];
+                foreach ($paths as $p) {
+                    if (file_exists($p) && is_file($p)) {
+                        @unlink($p);
+                    }
+                }
+            }
+
+            // Pastikan verifikasi profil = P karena ada dokumen ditolak
+            $asesi->verifikasi = 'P';
+        }
+
+        // Jika ada dokumen pokok yang belum terverifikasi atau ditolak, reset verifikasi profil ke 'P'
+        // Catatan: Peserta baru menjadi 'V' (Terverifikasi) setelah Admin menandatangani dan menyetujui rekomendasi di Bagian 5
+        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
+        $allVerified = true;
+        foreach ($wajibShortcodes as $sc) {
+            if (($verif[$sc] ?? '') !== 'terverifikasi') {
+                $allVerified = false;
+                break;
+            }
+        }
+        if (!$allVerified) {
+            $asesi->verifikasi = 'P';
+        }
+
+        $asesi->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status verifikasi dokumen berhasil diperbarui',
+            'data' => [
+                'shortcode' => $shortcode,
+                'status' => $status,
+                'verifikasi_dokumen' => $verif,
+                'all_verified' => $allVerified,
+                'verifikasi' => $asesi->verifikasi,
+            ],
+        ]);
+    }
+
     public function statistics()
     {
         // Tab statistics
@@ -883,6 +1118,102 @@ class AsesiController extends Controller
      */
     private function transformAsesi($asesi)
     {
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $wajibItems = [
+            'ijazah' => [
+                'label' => 'Scan Ijazah (Minimal S1/D4)',
+                'file' => $asesi->ijazah,
+            ],
+            'sertifikat_amdal' => [
+                'label' => 'Sertifikat Pelatihan AMDAL',
+                'file' => $asesi->sertifikat_amdal ?: $asesi->sertifikat,
+            ],
+            'bukti_keterlibatan' => [
+                'label' => 'Bukti Keterlibatan AMDAL',
+                'file' => $asesi->bukti_keterlibatan ?: $asesi->suket,
+            ],
+            'dokumen_amdal' => [
+                'label' => 'Salinan Dokumen AMDAL',
+                'file' => $asesi->dokumen_amdal,
+            ],
+        ];
+
+        $dokPersyaratan = [];
+        foreach ($wajibItems as $key => $item) {
+            $file = $item['file'];
+            $savedStatus = $verifDok[$key] ?? null;
+            $status = 'belum_ada';
+            if ($savedStatus === 'ditolak') {
+                $status = 'ditolak';
+            } elseif (!empty($file)) {
+                if ($savedStatus === 'terverifikasi' || $asesi->verifikasi === 'V') {
+                    $status = 'terverifikasi';
+                } else {
+                    $status = 'terupload';
+                }
+            }
+            $dokPersyaratan[$key] = [
+                'status' => $status,
+                'file' => $file,
+                'url' => $file ? asset('foto_asesi/' . $file) : null,
+                'label' => $item['label'],
+            ];
+        }
+
+        $tambahanItems = [
+            'cv' => [
+                'label' => 'Curriculum Vitae (CV)',
+                'file' => $asesi->cv,
+            ],
+            'foto' => [
+                'label' => 'Pas Foto (3x4)',
+                'file' => $asesi->foto,
+            ],
+            'ktp' => [
+                'label' => 'Scan KTP',
+                'file' => $asesi->ktp,
+            ],
+            'sertifikat_kompetensi_lain' => [
+                'label' => 'Sertifikat Pelatihan Relevan',
+                'file' => $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip,
+            ],
+            'form_pendaftaran' => [
+                'label' => 'Formulir Pendaftaran',
+                'file' => $asesi->form_pendaftaran,
+            ],
+            'sertifikat_atpa_ktpa' => [
+                'label' => 'Sertifikat ATPA/KTPA Sebelumnya',
+                'file' => $asesi->sertifikat_atpa_ktpa,
+            ],
+        ];
+
+        $dokTambahan = [];
+        foreach ($tambahanItems as $key => $item) {
+            $file = $item['file'];
+            $savedStatus = $verifDok[$key] ?? null;
+            $status = 'belum_ada';
+            if ($savedStatus === 'ditolak') {
+                $status = 'ditolak';
+            } elseif (!empty($file)) {
+                if ($savedStatus === 'terverifikasi' || $asesi->verifikasi === 'V') {
+                    $status = 'terverifikasi';
+                } else {
+                    $status = 'terupload';
+                }
+            }
+            $dokItem = [
+                'status' => $status,
+                'file' => $file,
+                'url' => $file ? asset('foto_asesi/' . $file) : null,
+                'label' => $item['label'],
+            ];
+            $dokTambahan[$key] = $dokItem;
+            $dokPersyaratan[$key] = $dokItem;
+        }
+
         return [
             'id' => $asesi->id,
             'no_pendaftaran' => $asesi->no_pendaftaran,
@@ -904,6 +1235,8 @@ class AsesiController extends Controller
             'status' => $asesi->status_label,
             'dokumen_pokok' => $asesi->dokumen_pokok,
             'dokumen_lengkap' => $asesi->dokumen_lengkap,
+            'dokumen_persyaratan' => $dokPersyaratan,
+            'dokumen_tambahan' => $dokTambahan,
             'statistik_asesmen' => $asesi->statistik_asesmen,
         ];
     }

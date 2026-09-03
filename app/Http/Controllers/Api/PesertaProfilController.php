@@ -109,6 +109,8 @@ class PesertaProfilController extends Controller
                 'tgl_sertifikat' => $asesi->tgl_sertifikat ? $asesi->tgl_sertifikat->format('Y-m-d') : null,
                 'angkatan' => $asesi->angkatan,
                 'verifikasi' => $asesi->verifikasi,
+                'verifikasi_dokumen' => $asesi->verifikasi_dokumen,
+                'profil_terverifikasi' => ($asesi->verifikasi === 'V'),
                 'blokir' => $asesi->blokir,
                 
                 // Syarat Dasar / Pokok
@@ -243,6 +245,10 @@ class PesertaProfilController extends Controller
             }
 
             // Handle file uploads
+            $verif = is_array($asesi?->verifikasi_dokumen)
+                ? $asesi->verifikasi_dokumen
+                : (is_string($asesi?->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
             foreach ($docKeys as $fileKey) {
                 if ($request->hasFile($fileKey)) {
                     $uploaded = $request->file($fileKey);
@@ -257,8 +263,12 @@ class PesertaProfilController extends Controller
                     if ($fileKey === 'sertifikat_amdal') $data['sertifikat'] = $data[$fileKey];
                     if ($fileKey === 'bukti_keterlibatan') $data['suket'] = $data[$fileKey];
                     if ($fileKey === 'sertifikat_kompetensi_lain') $data['transkrip'] = $data[$fileKey];
+
+                    // Reset verifikasi status ke terupload
+                    $verif[$fileKey] = 'terupload';
                 }
             }
+            $data['verifikasi_dokumen'] = $verif;
 
             if ($asesi) {
                 $asesi->update($data);

@@ -69,6 +69,7 @@ class Asesi extends Model
         'angkatan',
         'blokir',
         'verifikasi',
+        'verifikasi_dokumen',
         'id_pengusul',
         'wil_ujikom',
     ];
@@ -83,6 +84,7 @@ class Asesi extends Model
         'angkatan' => 'integer',
         'blokir' => 'string',
         'waktu' => 'datetime',
+        'verifikasi_dokumen' => 'array',
     ];
 
     /**
@@ -313,11 +315,13 @@ class Asesi extends Model
     public function scopeSearch($query, $search)
     {
         if ($search) {
-            return $query->where('nama', 'like', '%' . $search . '%')
-                ->orWhere('no_pendaftaran', 'like', '%' . $search . '%')
-                ->orWhere('no_ktp', 'like', '%' . $search . '%')
-                ->orWhere('email', 'like', '%' . $search . '%')
-                ->orWhere('nohp', 'like', '%' . $search . '%');
+            return $query->where(function ($q) use ($search) {
+                $q->where('nama', 'like', '%' . $search . '%')
+                    ->orWhere('no_pendaftaran', 'like', '%' . $search . '%')
+                    ->orWhere('no_ktp', 'like', '%' . $search . '%')
+                    ->orWhere('email', 'like', '%' . $search . '%')
+                    ->orWhere('nohp', 'like', '%' . $search . '%');
+            });
         }
         return $query;
     }

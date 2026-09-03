@@ -85,7 +85,17 @@ class DevSyaratController extends Controller
         $wajib = AsesiPersyaratanpokok::wajib()->orderBy('id', 'asc')->get();
 
         $dokumen = $wajib->map(function ($p) use ($asesi) {
-            $file = $asesi->{$p->shortcode} ?? null;
+            $shortcode = $p->shortcode;
+            $file = $asesi->{$shortcode} ?? null;
+            if (empty($file)) {
+                if (in_array($shortcode, ['sertifikat_amdal', 'sertifikat'])) {
+                    $file = $asesi->sertifikat_amdal ?: $asesi->sertifikat;
+                } elseif (in_array($shortcode, ['bukti_keterlibatan', 'suket'])) {
+                    $file = $asesi->bukti_keterlibatan ?: $asesi->suket;
+                } elseif (in_array($shortcode, ['sertifikat_kompetensi_lain', 'transkrip'])) {
+                    $file = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
+                }
+            }
             return [
                 'id' => $p->id,
                 'persyaratan' => $p->persyaratan,

@@ -19,8 +19,12 @@ class AsesiAsesmen extends Model
     public $timestamps = false;
 
     protected $fillable = [
+        'tujuan_sertifikasi',
+        'tujuan_lainnya',
         'id_asesi',
         'id_skemakkni',
+        'tgl_daftar',
+        'biaya',
         'id_jadwal',
         'id_asesor',
         'peninjau_ia11',
@@ -32,15 +36,13 @@ class AsesiAsesmen extends Model
         'no_serisertifikat',
         'masa_berlaku',
         'foto_sertifikat',
-        'is_apl02',
-        'created_at',
     ];
 
     protected $casts = [
+        'tgl_daftar' => 'date',
         'tgl_asesmen' => 'date',
         'masa_berlaku' => 'date',
-        'created_at' => 'datetime',
-        'is_apl02' => 'boolean',
+        'biaya' => 'integer',
     ];
 
     /**
@@ -88,7 +90,7 @@ class AsesiAsesmen extends Model
      */
     public function getStatusLabelAttribute()
     {
-        return match($this->status) {
+        return match ($this->status) {
             'A' => 'Disetujui',
             'R' => 'Ditolak',
             'P' => 'Pending',
@@ -101,7 +103,7 @@ class AsesiAsesmen extends Model
      */
     public function getStatusAsesmenLabelAttribute()
     {
-        return match($this->status_asesmen) {
+        return match ($this->status_asesmen) {
             'K' => 'Kompeten',
             'BK' => 'Belum Kompeten',
             default => null,

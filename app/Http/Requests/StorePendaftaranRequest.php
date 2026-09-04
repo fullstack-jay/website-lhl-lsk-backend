@@ -33,6 +33,10 @@ class StorePendaftaranRequest extends FormRequest
 
             // Alamat
             'alamat' => 'required|string',
+            'rt' => 'nullable|string|max:10',
+            'rw' => 'nullable|string|max:10',
+            'RT' => 'nullable|string|max:10',
+            'RW' => 'nullable|string|max:10',
             'propinsi' => 'nullable|string|max:100',
             'kota' => 'nullable|string|max:100',
             'kecamatan' => 'nullable|string|max:100',

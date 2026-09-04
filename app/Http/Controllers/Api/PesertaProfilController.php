@@ -29,16 +29,33 @@ class PesertaProfilController extends Controller
             ->orWhere('nohp', $user->no_telp)
             ->first();
 
+        // Cari data pendaftaran jika ada field yang masih belum tersimpan di asesi/user
+        $pendaftaran = \App\Models\Pendaftaran::where('no_ktp', $user->no_ktp)
+            ->orWhere('email', $user->email)
+            ->orWhere('no_pendaftaran', $user->username)
+            ->orWhere('no_hp', $user->no_telp)
+            ->latest()
+            ->first();
+
         if (!$asesi) {
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'no_pendaftaran' => $user->no_induk ?: $user->username,
+                    'no_pendaftaran' => $user->no_induk ?: ($pendaftaran?->no_pendaftaran ?: $user->username),
                     'no_ktp' => $user->no_ktp,
                     'nama' => $user->nama_lengkap,
                     'email' => $user->email,
                     'nohp' => $user->no_telp,
-                    'keahlian_penyusun' => $user->keahlian_penyusun,
+                    'pendidikan' => $user->pendidikan_terakhir ?: ($pendaftaran?->kualifikasi_pendidikan),
+                    'keahlian_penyusun' => $user->keahlian_penyusun ?: ($pendaftaran?->bidang_keahlian),
+                    'alamat' => $user->alamat ?: ($pendaftaran?->alamat),
+                    'RT' => $user->RT,
+                    'RW' => $user->RW,
+                    'propinsi' => $user->propinsi ?: ($pendaftaran?->propinsi),
+                    'kota' => $user->kota ?: ($pendaftaran?->kota),
+                    'kecamatan' => $user->kecamatan ?: ($pendaftaran?->kecamatan),
+                    'kelurahan' => $user->kelurahan ?: ($pendaftaran?->kelurahan),
+                    'kodepos' => $pendaftaran?->kode_pos,
                     'foto_url' => $user->foto ? url('storage/foto_asesi/' . $user->foto) : null,
                     'is_empty' => true,
                 ],
@@ -90,19 +107,19 @@ class PesertaProfilController extends Controller
                 'tmp_lahir' => $asesi->tmp_lahir,
                 'tgl_lahir' => $asesi->tgl_lahir ? $asesi->tgl_lahir->format('Y-m-d') : null,
                 'jenis_kelamin' => $asesi->jenis_kelamin ?: 'L',
-                'pendidikan' => $asesi->pendidikan,
-                'keahlian_penyusun' => $asesi->keahlian_penyusun,
+                'pendidikan' => $asesi->pendidikan ?: ($user->pendidikan_terakhir ?: ($pendaftaran?->kualifikasi_pendidikan)),
+                'keahlian_penyusun' => $asesi->keahlian_penyusun ?: ($user->keahlian_penyusun ?: ($pendaftaran?->bidang_keahlian)),
                 'email' => $asesi->email,
                 'nohp' => $asesi->nohp,
-                'alamat' => $asesi->alamat,
-                'RT' => $asesi->RT,
-                'RW' => $asesi->RW,
-                'kelurahan' => $asesi->kelurahan,
-                'kecamatan' => $asesi->kecamatan,
+                'alamat' => $asesi->alamat ?: ($user->alamat ?: ($pendaftaran?->alamat)),
+                'RT' => $asesi->RT ?: ($user->RT ?: null),
+                'RW' => $asesi->RW ?: ($user->RW ?: null),
+                'kelurahan' => $asesi->kelurahan ?: ($user->kelurahan ?: $pendaftaran?->kelurahan),
+                'kecamatan' => $asesi->kecamatan ?: ($user->kecamatan ?: $pendaftaran?->kecamatan),
                 'kecamatan_nama' => $kecamatanNama,
-                'kota' => $asesi->kota,
+                'kota' => $asesi->kota ?: ($user->kota ?: $pendaftaran?->kota),
                 'kota_nama' => $kotaNama,
-                'propinsi' => $asesi->propinsi,
+                'propinsi' => $asesi->propinsi ?: ($user->propinsi ?: $pendaftaran?->propinsi),
                 'propinsi_nama' => $propinsiNama,
                 'kodepos' => $asesi->kodepos,
                 'no_sertifikat' => $asesi->no_sertifikat,

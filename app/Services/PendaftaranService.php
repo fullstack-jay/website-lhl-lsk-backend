@@ -38,6 +38,35 @@ class PendaftaranService
             // Create pendaftaran
             $pendaftaran = $this->repository->create($data);
 
+            // Format dan catat master keahlian jika ada
+            $formattedKeahlian = null;
+            if (!empty($data['bidang_keahlian'])) {
+                $formattedKeahlian = \App\Models\MasterKeahlian::recordMultipleIfNew($data['bidang_keahlian']);
+                if ($formattedKeahlian) {
+                    $data['bidang_keahlian'] = $formattedKeahlian;
+                }
+            }
+
+            // Ekstrak RT & RW dari field terpisah atau string alamat
+            $rt = $data['rt'] ?? ($data['RT'] ?? null);
+            $rw = $data['rw'] ?? ($data['RW'] ?? null);
+            if ((empty($rt) || empty($rw)) && !empty($data['alamat'])) {
+                if (preg_match('/RT\s*[:\.]?\s*(\d{1,3})\s*(?:[\/,\-&]|dan|\s+)\s*RW\s*[:\.]?\s*(\d{1,3})/i', $data['alamat'], $m)) {
+                    if (empty($rt)) $rt = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+                    if (empty($rw)) $rw = str_pad($m[2], 3, '0', STR_PAD_LEFT);
+                } elseif (preg_match('/RT\s*[:\.]?\s*(\d{1,3})\s*[\/]\s*(\d{1,3})/i', $data['alamat'], $m)) {
+                    if (empty($rt)) $rt = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+                    if (empty($rw)) $rw = str_pad($m[2], 3, '0', STR_PAD_LEFT);
+                } else {
+                    if (empty($rt) && preg_match('/RT\s*[:\.]?\s*(\d{1,3})/i', $data['alamat'], $m)) {
+                        $rt = str_pad($m[1], 3, '0', STR_PAD_LEFT);
+                    }
+                    if (empty($rw) && preg_match('/RW\s*[:\.]?\s*(\d{1,3})/i', $data['alamat'], $m)) {
+                        $rw = str_pad($m[2], 3, '0', STR_PAD_LEFT);
+                    }
+                }
+            }
+
             // Create user account untuk peserta (gunakan no_ktp sebagai username)
             $userData = [
                 'username' => $data['no_ktp'], // Gunakan no_ktp sebagai username
@@ -48,6 +77,15 @@ class PendaftaranService
                 'no_ktp' => $data['no_ktp'],
                 'level' => 'user', // Role PESERTA
                 'blokir' => 'N', // Active
+                'keahlian_penyusun' => $formattedKeahlian ?: ($data['bidang_keahlian'] ?? null),
+                'pendidikan_terakhir' => $data['kualifikasi_pendidikan'] ?? null,
+                'alamat' => $data['alamat'] ?? null,
+                'RT' => $rt,
+                'RW' => $rw,
+                'propinsi' => $data['propinsi'] ?? null,
+                'kota' => $data['kota'] ?? null,
+                'kecamatan' => $data['kecamatan'] ?? null,
+                'kelurahan' => $data['kelurahan'] ?? null,
             ];
 
             $user = User::create($userData);

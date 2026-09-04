@@ -144,72 +144,20 @@ class AsesiController extends Controller
             ->where('blokir', 'N');
 
         // Apply additional filters (except verifikasi and blokir)
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $query->search($request->search);
         }
 
-        if ($request->has('angkatan')) {
+        if ($request->filled('angkatan')) {
             $query->byAngkatan($request->angkatan);
         }
 
-        if ($request->has('propinsi')) {
+        if ($request->filled('propinsi')) {
             $query->byPropinsi($request->propinsi);
         }
 
         // Filter by kelengkapan dan status dokumen
-        $filterDokumen = $request->get('dokumen_pokok');
-        if ($filterDokumen === 'lengkap') {
-            $query->whereRaw("
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
-            ");
-        } elseif ($filterDokumen === 'ada_verifikasi') {
-            // Ada dokumen yang sudah diverifikasi (walaupun baru 1 dokumen)
-            $query->whereRaw("
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.foto')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ktp')) = 'terverifikasi' OR
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.cv')) = 'terverifikasi'
-            ");
-        } elseif ($filterDokumen === 'sudah_upload') {
-            // Sudah upload dokumen (berkas terupload tapi belum/sebagian diverifikasi)
-            $query->whereRaw("
-                (ijazah IS NOT NULL AND TRIM(ijazah) != '') OR
-                (sertifikat_amdal IS NOT NULL AND TRIM(sertifikat_amdal) != '') OR
-                (sertifikat IS NOT NULL AND TRIM(sertifikat) != '') OR
-                (bukti_keterlibatan IS NOT NULL AND TRIM(bukti_keterlibatan) != '') OR
-                (suket IS NOT NULL AND TRIM(suket) != '') OR
-                (dokumen_amdal IS NOT NULL AND TRIM(dokumen_amdal) != '') OR
-                (foto IS NOT NULL AND TRIM(foto) != '') OR
-                (ktp IS NOT NULL AND TRIM(ktp) != '') OR
-                (cv IS NOT NULL AND TRIM(cv) != '')
-            ");
-        } elseif ($filterDokumen === 'belum_upload') {
-            // Belum upload berkas sama sekali
-            $query->whereRaw("
-                (ijazah IS NULL OR TRIM(ijazah) = '') AND
-                (sertifikat_amdal IS NULL OR TRIM(sertifikat_amdal) = '') AND
-                (sertifikat IS NULL OR TRIM(sertifikat) = '') AND
-                (bukti_keterlibatan IS NULL OR TRIM(bukti_keterlibatan) = '') AND
-                (suket IS NULL OR TRIM(suket) = '') AND
-                (dokumen_amdal IS NULL OR TRIM(dokumen_amdal) = '') AND
-                (foto IS NULL OR TRIM(foto) = '') AND
-                (ktp IS NULL OR TRIM(ktp) = '') AND
-                (cv IS NULL OR TRIM(cv) = '')
-            ");
-        } elseif ($filterDokumen === 'belum_lengkap') {
-            $query->whereRaw("NOT (
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
-                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
-            )");
-        }
+        $this->applyDokumenFilter($query, $request);
 
         // Prioritas Urutan (Sorting Cerdas):
         // 1. Lengkap 4/4 Terverifikasi (1000 poin)
@@ -276,17 +224,20 @@ class AsesiController extends Controller
             ->where('blokir', 'N');
 
         // Apply additional filters (except verifikasi and blokir)
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $query->search($request->search);
         }
 
-        if ($request->has('angkatan')) {
+        if ($request->filled('angkatan')) {
             $query->byAngkatan($request->angkatan);
         }
 
-        if ($request->has('propinsi')) {
+        if ($request->filled('propinsi')) {
             $query->byPropinsi($request->propinsi);
         }
+
+        // Filter dokumen
+        $this->applyDokumenFilter($query, $request);
 
         // Sorting - by default sort by nama ASC
         $sortBy = $request->get('sort_by', 'nama');
@@ -337,37 +288,115 @@ class AsesiController extends Controller
      * @param Request $request
      * @return void
      */
+    /**
+     * Apply filter kelengkapan dan status dokumen
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param Request $request
+     * @return void
+     */
+    private function applyDokumenFilter($query, Request $request)
+    {
+        $filterDokumen = $request->get('dokumen_pokok');
+        if (!$filterDokumen || $filterDokumen === 'semua') {
+            return;
+        }
+
+        if ($filterDokumen === 'lengkap') {
+            $query->whereRaw("(
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
+            )");
+        } elseif ($filterDokumen === 'ada_verifikasi') {
+            // Ada dokumen yang sudah diverifikasi (walaupun baru 1 dokumen)
+            $query->whereRaw("(
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.foto')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ktp')) = 'terverifikasi' OR
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.cv')) = 'terverifikasi'
+            )");
+        } elseif ($filterDokumen === 'sudah_upload') {
+            // Sudah upload dokumen (berkas terupload tapi belum/sebagian diverifikasi)
+            $query->whereRaw("(
+                (ijazah IS NOT NULL AND TRIM(ijazah) != '') OR
+                (sertifikat_amdal IS NOT NULL AND TRIM(sertifikat_amdal) != '') OR
+                (sertifikat IS NOT NULL AND TRIM(sertifikat) != '') OR
+                (bukti_keterlibatan IS NOT NULL AND TRIM(bukti_keterlibatan) != '') OR
+                (suket IS NOT NULL AND TRIM(suket) != '') OR
+                (dokumen_amdal IS NOT NULL AND TRIM(dokumen_amdal) != '') OR
+                (foto IS NOT NULL AND TRIM(foto) != '') OR
+                (ktp IS NOT NULL AND TRIM(ktp) != '') OR
+                (cv IS NOT NULL AND TRIM(cv) != '')
+            )");
+        } elseif ($filterDokumen === 'belum_upload') {
+            // Belum upload berkas sama sekali
+            $query->whereRaw("(
+                (ijazah IS NULL OR TRIM(ijazah) = '') AND
+                (sertifikat_amdal IS NULL OR TRIM(sertifikat_amdal) = '') AND
+                (sertifikat IS NULL OR TRIM(sertifikat) = '') AND
+                (bukti_keterlibatan IS NULL OR TRIM(bukti_keterlibatan) = '') AND
+                (suket IS NULL OR TRIM(suket) = '') AND
+                (dokumen_amdal IS NULL OR TRIM(dokumen_amdal) = '') AND
+                (foto IS NULL OR TRIM(foto) = '') AND
+                (ktp IS NULL OR TRIM(ktp) = '') AND
+                (cv IS NULL OR TRIM(cv) = '')
+            )");
+        } elseif ($filterDokumen === 'belum_lengkap') {
+            $query->whereRaw("NOT (
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.ijazah')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.sertifikat_amdal')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.bukti_keterlibatan')) = 'terverifikasi' AND
+                JSON_UNQUOTE(JSON_EXTRACT(verifikasi_dokumen, '$.dokumen_amdal')) = 'terverifikasi'
+            )");
+        }
+    }
+
+    /**
+     * Apply common filters for all tabs
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @param Request $request
+     * @return void
+     */
     private function applyCommonFilters($query, Request $request)
     {
         // Search
-        if ($request->has('search')) {
+        if ($request->filled('search')) {
             $query->search($request->search);
         }
 
         // Filter by verifikasi (only if not in kompeten/belum_kompeten tabs)
-        if ($request->has('verifikasi')) {
+        if ($request->filled('verifikasi')) {
             $query->where('verifikasi', $request->verifikasi);
         }
 
         // Filter by blokir (only if not in kompeten/belum_kompeten tabs)
-        if ($request->has('blokir')) {
+        if ($request->filled('blokir')) {
             $query->where('blokir', $request->blokir);
         }
 
         // Filter by angkatan
-        if ($request->has('angkatan')) {
+        if ($request->filled('angkatan')) {
             $query->byAngkatan($request->angkatan);
         }
 
         // Filter by propinsi
-        if ($request->has('propinsi')) {
+        if ($request->filled('propinsi')) {
             $query->byPropinsi($request->propinsi);
         }
 
         // Filter by kota
-        if ($request->has('kota')) {
+        if ($request->filled('kota')) {
             $query->byKota($request->kota);
         }
+
+        // Filter dokumen
+        $this->applyDokumenFilter($query, $request);
     }
 
     /**
@@ -1012,17 +1041,23 @@ class AsesiController extends Controller
             $asesi->verifikasi = 'P';
         }
 
-        // Jika ada dokumen pokok yang belum terverifikasi atau ditolak, reset verifikasi profil ke 'P'
-        // Catatan: Peserta baru menjadi 'V' (Terverifikasi) setelah Admin menandatangani dan menyetujui rekomendasi di Bagian 5
         $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $allVerified = true;
         foreach ($wajibShortcodes as $sc) {
-            if (($verif[$sc] ?? '') !== 'terverifikasi') {
+            $alias = match ($sc) {
+                'sertifikat_amdal' => 'sertifikat',
+                'bukti_keterlibatan' => 'suket',
+                default => null,
+            };
+            $isScVerif = ($verif[$sc] ?? '') === 'terverifikasi' || ($alias && ($verif[$alias] ?? '') === 'terverifikasi');
+            if (!$isScVerif) {
                 $allVerified = false;
                 break;
             }
         }
-        if (!$allVerified) {
+        if ($allVerified) {
+            $asesi->verifikasi = 'V';
+        } else {
             $asesi->verifikasi = 'P';
         }
 

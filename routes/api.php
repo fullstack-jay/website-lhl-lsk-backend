@@ -273,6 +273,15 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\Api\PesertaDashboardController::class, 'index']);
     Route::get('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'update']);
+
+    // Skema Sertifikasi — Portal Peserta (docs/BACKEND_PESERTA_SKEMA_SERTIFIKASI.md)
+    Route::get('/skema', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'index']);
+    Route::get('/skema/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'show']);
+    Route::post('/skema/{id}/dokumen', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'storeDokumen']);
+    Route::get('/dokumen-library', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'library']);
+    Route::post('/skema/{id}/dokumen-library', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'storeFromLibrary']);
+    Route::delete('/dokumen/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'destroyDokumen']);
+    Route::post('/skema/{id}/pendaftaran', [\App\Http\Controllers\Api\PesertaPendaftaranController::class, 'store']);
 });
 
 /*

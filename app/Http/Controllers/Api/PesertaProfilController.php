@@ -118,10 +118,7 @@ class PesertaProfilController extends Controller
             }
         }
 
-        if ($allWajibVerified && $asesi->verifikasi !== 'V') {
-            $asesi->verifikasi = 'V';
-            $asesi->save();
-        }
+        // Profil terverifikasi jika 4 syarat pokok terverifikasi, tetapi asesi->verifikasi tetap P sampai admin tanda tangan & ACC
 
         $isVerified = ($asesi->verifikasi === 'V') || $allWajibVerified;
 

@@ -134,11 +134,7 @@ class PesertaDashboardController extends Controller
             }
         }
 
-        // Sinkronisasi status verifikasi asesi jika semua syarat pokok terverifikasi
-        if ($allWajibVerified && $asesi->verifikasi !== 'V') {
-            $asesi->verifikasi = 'V';
-            $asesi->save();
-        }
+        // Profil terverifikasi jika 4 syarat pokok terverifikasi, tetapi asesi->verifikasi tetap P sampai admin tanda tangan & ACC
 
         // ── Verifikasi profil (ACC admin / Syarat Pokok Terverifikasi) ──
         $profilTerverifikasi = ($asesi->verifikasi === 'V') || $allWajibVerified;

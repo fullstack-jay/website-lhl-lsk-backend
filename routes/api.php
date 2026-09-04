@@ -271,6 +271,7 @@ Route::prefix('frontpage')->group(function () {
 */
 Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/dashboard', [\App\Http\Controllers\Api\PesertaDashboardController::class, 'index']);
+    Route::get('/asesmen-saya', [\App\Http\Controllers\Api\AsesmenSayaController::class, 'index']);
     Route::get('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'update']);
 

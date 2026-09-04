@@ -92,7 +92,7 @@ class Asesi extends Model
      */
     public function jadwalAsesmen(): BelongsToMany
     {
-        return $this->belongsToMany(JadwalAsesmen::class, 'asesi_asesmen', 'id_asesi', 'id_jadwal')
+        return $this->belongsToMany(JadwalAsesmen::class, 'asesi_asesmen', 'id_asesi', 'id_jadwal', 'no_pendaftaran', 'id')
             ->withPivot('status_asesmen', 'status', 'peninjau_ia11', 'tgl_asesmen');
     }
 
@@ -101,8 +101,8 @@ class Asesi extends Model
      */
     public function skema(): BelongsToMany
     {
-        return $this->belongsToMany(SkemaKkni::class, 'asesi_asesmen', 'id_asesi', 'id_skemakkni')
-            ->withPivot('status', 'status_asesmen', 'no_lisensi', 'no_serisertifikat', 'masa_berlaku', 'foto_sertifikat');
+        return $this->belongsToMany(SkemaKkni::class, 'asesi_asesmen', 'id_asesi', 'id_skemakkni', 'no_pendaftaran', 'id')
+            ->withPivot('status', 'status_asesmen', 'no_lisensi', 'no_serisertifikat', 'masa_berlaku', 'foto_sertifikat', 'biaya', 'tujuan_sertifikasi');
     }
 
     /**
@@ -110,7 +110,7 @@ class Asesi extends Model
      */
     public function asesor(): BelongsToMany
     {
-        return $this->belongsToMany(Asesor::class, 'asesi_asesmen', 'id_asesi', 'id_asesor')
+        return $this->belongsToMany(Asesor::class, 'asesi_asesmen', 'id_asesi', 'id_asesor', 'no_pendaftaran', 'id')
             ->withPivot('id_skemakkni', 'id_jadwal');
     }
 

@@ -941,6 +941,16 @@ class AsesiController extends Controller
                 }
             }
 
+            if ($newVerifikasi === 'V') {
+                if ($request->filled('signature') || $request->filled('tanda_tangan')) {
+                    $signature = $request->input('signature') ?: $request->input('tanda_tangan');
+                    $verif['ttd_admin'] = $signature;
+                    $verif['tgl_persetujuan_admin'] = now()->toISOString();
+                    $verif['nama_admin'] = auth()->user()?->nama_lengkap ?? 'Administrator Sistem';
+                    $asesi->verifikasi_dokumen = $verif;
+                }
+            }
+
             $asesi->verifikasi = $newVerifikasi;
             $asesi->save();
 
@@ -1041,20 +1051,25 @@ class AsesiController extends Controller
             $asesi->verifikasi = 'P';
         }
 
+        // Apakah SEMUA 4 dokumen persyaratan pokok sudah terverifikasi?
         $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $allVerified = true;
         foreach ($wajibShortcodes as $sc) {
             $alias = match ($sc) {
                 'sertifikat_amdal' => 'sertifikat',
                 'bukti_keterlibatan' => 'suket',
+                'dokumen_amdal' => 'salinan_dokumen',
                 default => null,
             };
-            $isScVerif = ($verif[$sc] ?? '') === 'terverifikasi' || ($alias && ($verif[$alias] ?? '') === 'terverifikasi');
-            if (!$isScVerif) {
+            $scVerif = ($verif[$sc] ?? '') === 'terverifikasi' || ($alias && ($verif[$alias] ?? '') === 'terverifikasi');
+            if (!$scVerif) {
                 $allVerified = false;
                 break;
             }
         }
+
+        // Jika SEMUA 4 syarat pokok sudah terverifikasi, otomatis verifikasi = 'V'
+        // Jika belum semua atau ada dokumen ditolak, kembalikan ke 'P'
         if ($allVerified) {
             $asesi->verifikasi = 'V';
         } else {
@@ -1249,16 +1264,102 @@ class AsesiController extends Controller
             $dokPersyaratan[$key] = $dokItem;
         }
 
+        // Fallback data pekerjaan sekarang dari pendaftarans jika belum terisi di asesi
+        $namaKantor = $asesi->nama_kantor;
+        $jabatan = $asesi->jabatan;
+        $alamatKantor = $asesi->alamat_kantor;
+        $telpKantor = $asesi->telp_kantor;
+        $faxKantor = $asesi->fax_kantor;
+        $emailKantor = $asesi->email_kantor;
+        $pekerjaan = $asesi->pekerjaan;
+
+        if (empty($namaKantor) || empty($jabatan) || empty($alamatKantor)) {
+            $pendaftaran = \App\Models\Pendaftaran::where('no_ktp', $asesi->no_ktp)
+                ->orWhere('email', $asesi->email)
+                ->orWhere('no_pendaftaran', $asesi->no_pendaftaran)
+                ->orWhere('no_hp', $asesi->nohp)
+                ->latest()
+                ->first();
+
+            if ($pendaftaran) {
+                if (empty($namaKantor) && !empty($pendaftaran->nama_institusi)) $namaKantor = $pendaftaran->nama_institusi;
+                if (empty($jabatan) && !empty($pendaftaran->jabatan)) $jabatan = $pendaftaran->jabatan;
+                if (empty($alamatKantor) && !empty($pendaftaran->alamat_kantor)) $alamatKantor = $pendaftaran->alamat_kantor;
+                if (empty($telpKantor) && !empty($pendaftaran->no_telp_kantor)) $telpKantor = $pendaftaran->no_telp_kantor;
+                if (empty($faxKantor) && !empty($pendaftaran->no_fax_kantor)) $faxKantor = $pendaftaran->no_fax_kantor;
+                if (empty($emailKantor) && !empty($pendaftaran->email_kantor)) $emailKantor = $pendaftaran->email_kantor;
+                if (empty($pekerjaan) && !empty($pendaftaran->bidang_keahlian)) $pekerjaan = $pendaftaran->bidang_keahlian;
+
+                $updateFields = [];
+                if (empty($asesi->nama_kantor) && !empty($namaKantor)) $updateFields['nama_kantor'] = $namaKantor;
+                if (empty($asesi->jabatan) && !empty($jabatan)) $updateFields['jabatan'] = $jabatan;
+                if (empty($asesi->alamat_kantor) && !empty($alamatKantor)) $updateFields['alamat_kantor'] = $alamatKantor;
+                if (empty($asesi->telp_kantor) && !empty($telpKantor)) $updateFields['telp_kantor'] = $telpKantor;
+                if (empty($asesi->fax_kantor) && !empty($faxKantor)) $updateFields['fax_kantor'] = $faxKantor;
+                if (empty($asesi->email_kantor) && !empty($emailKantor)) $updateFields['email_kantor'] = $emailKantor;
+                if (empty($asesi->pekerjaan) && !empty($pekerjaan)) $updateFields['pekerjaan'] = $pekerjaan;
+
+                if (!empty($updateFields)) {
+                    \DB::table('asesi')->where('id', $asesi->id)->update($updateFields);
+                    foreach ($updateFields as $fld => $val) {
+                        $asesi->{$fld} = $val;
+                    }
+                }
+            }
+        }
+
+        // Ambil tanda tangan digital pemohon dari logdigisign
+        $ttdLog = \DB::table('logdigisign')
+            ->where(function ($q) use ($asesi) {
+                $q->where('file', 'like', 'ttd_' . $asesi->no_pendaftaran . '_%')
+                  ->orWhere('penandatangan', $asesi->nama)
+                  ->orWhere('url_ditandatangani', 'like', '%' . $asesi->no_pendaftaran . '%');
+            })
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $ttdPemohonUrl = null;
+        $ttdPemohonWaktu = null;
+        if ($ttdLog) {
+            $ttdPemohonWaktu = $ttdLog->waktu;
+            if (!empty($ttdLog->file)) {
+                $fileName = basename($ttdLog->file);
+                $ttdPemohonUrl = asset('storage/foto_tandatangan/' . $fileName);
+            } elseif (!empty($ttdLog->url_ditandatangani)) {
+                $ttdPemohonUrl = $ttdLog->url_ditandatangani;
+            }
+        }
+
         return [
             'id' => $asesi->id,
             'no_pendaftaran' => $asesi->no_pendaftaran,
+            'ttd_pemohon' => $ttdPemohonUrl,
+            'ttd_pemohon_waktu' => $ttdPemohonWaktu,
             'nama' => $asesi->nama,
+            'tmp_lahir' => $asesi->tmp_lahir,
+            'tgl_lahir' => $asesi->tgl_lahir ? $asesi->tgl_lahir->format('Y-m-d') : null,
+            'usia' => $asesi->usia ?: ($asesi->age_from_dob ?: ($asesi->tgl_lahir ? $asesi->tgl_lahir->age : null)),
+            'jenis_kelamin' => $asesi->jenis_kelamin,
             'no_ktp' => $asesi->no_ktp,
             'nohp' => $asesi->nohp,
             'whatsapp' => $asesi->whatsapp,
             'email' => $asesi->email,
-            'tgl_lahir' => $asesi->tgl_lahir ? $asesi->tgl_lahir->format('Y-m-d') : null,
-            'jenis_kelamin' => $asesi->jenis_kelamin,
+            'pendidikan' => $asesi->pendidikan,
+            'keahlian_penyusun' => $asesi->keahlian_penyusun,
+            'lembaga_pendidikan' => $asesi->lembaga_pendidikan,
+            'agama' => $asesi->agama,
+            'prodi' => $asesi->prodi,
+            'tahun_lulus' => $asesi->tahun_lulus,
+            'kebangsaan' => $asesi->kebangsaan ?: 'Indonesia',
+            'pekerjaan' => $pekerjaan,
+            'jabatan' => $jabatan,
+            'nama_kantor' => $namaKantor,
+            'alamat_kantor' => $alamatKantor,
+            'telp_kantor' => $telpKantor,
+            'fax_kantor' => $faxKantor,
+            'email_kantor' => $emailKantor,
+            'no_sertifikat' => $asesi->no_sertifikat,
+            'tgl_sertifikat' => $asesi->tgl_sertifikat ? $asesi->tgl_sertifikat->format('Y-m-d') : null,
             'tgl_daftar' => $asesi->tgl_daftar ? $asesi->tgl_daftar->format('Y-m-d') : null,
             'angkatan' => $asesi->angkatan,
             'propinsi' => $asesi->propinsi,
@@ -1272,6 +1373,7 @@ class AsesiController extends Controller
             'dokumen_lengkap' => $asesi->dokumen_lengkap,
             'dokumen_persyaratan' => $dokPersyaratan,
             'dokumen_tambahan' => $dokTambahan,
+            'verifikasi_dokumen' => $verifDok,
             'statistik_asesmen' => $asesi->statistik_asesmen,
         ];
     }
@@ -1359,31 +1461,171 @@ class AsesiController extends Controller
         ];
 
         // Add skema yang diikuti
-        $data['skema_diikuti'] = $asesi->skema->map(function ($skema) {
+        $skemaItems = $asesi->skema;
+        if ($skemaItems->isEmpty()) {
+            $pendaftarans = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
+                ->orWhere('id_asesi', (string) $asesi->id)
+                ->with('skema')
+                ->get();
+            $skemaItems = $pendaftarans->map(function ($p) {
+                if ($p->skema) {
+                    $p->skema->pivot = (object) [
+                        'status' => $p->status,
+                        'status_asesmen' => $p->status_asesmen,
+                        'no_lisensi' => $p->no_lisensi,
+                        'no_serisertifikat' => $p->no_serisertifikat,
+                        'masa_berlaku' => $p->masa_berlaku,
+                        'foto_sertifikat' => $p->foto_sertifikat,
+                        'biaya' => $p->biaya,
+                        'tujuan_sertifikasi' => $p->tujuan_sertifikasi,
+                    ];
+                    return $p->skema;
+                }
+                return null;
+            })->filter()->values();
+        }
+
+        $data['skema_diikuti'] = $skemaItems->map(function ($skema) use ($asesi) {
+            $pivot = $skema->pivot;
+
+            $persyaratan = \DB::table('skema_persyaratan')
+                ->where('id_skemakkni', $skema->id)
+                ->pluck('persyaratan')
+                ->map(fn($p) => trim($p))
+                ->filter()
+                ->values()
+                ->toArray();
+
+            if (empty($persyaratan)) {
+                $persyaratan = [
+                    "Fotocopy Kartu Tanda Penduduk",
+                    "Foto berwarna ukuran 3 x 4 sebanyak 3 buah",
+                    "Fotocopy ijazah minimal D4/S1",
+                    "Memiliki sertifikat kelulusan pelatihan penyusun Amdal dari LPK Amdal yang telah terakreditasi",
+                    "Memiliki pengalaman dalam penyusunan Amdal",
+                ];
+            }
+
+            $units = \DB::table('unit_kompetensi')
+                ->where('id_skemakkni', $skema->id)
+                ->orderBy('id')
+                ->get()
+                ->map(function ($u, $idx) {
+                    return [
+                        'no' => $idx + 1,
+                        'id' => $u->id,
+                        'kode' => $u->kode_unit,
+                        'judul' => $u->judul,
+                        'jenis' => $u->jenis ?: 'SKKNI',
+                    ];
+                })
+                ->toArray();
+
             return [
                 'id' => $skema->id,
                 'judul' => $skema->judul,
                 'kode_skema' => $skema->kode_skema,
-                'status' => $skema->pivot->status,
-                'status_asesmen' => $skema->pivot->status_asesmen,
-                'no_sertifikat' => $skema->pivot->no_lisensi,
-                'masa_berlaku' => $skema->pivot->masa_berlaku,
+                'status' => $pivot->status ?? 'P',
+                'status_asesmen' => $pivot->status_asesmen ?? 'P',
+                'no_sertifikat' => $pivot->no_lisensi ?? null,
+                'masa_berlaku' => $pivot->masa_berlaku ?? null,
+                'biaya' => (int) ($pivot->biaya ?? 0),
+                'tujuan_sertifikasi' => $pivot->tujuan_sertifikasi ?? 'Sertifikasi',
+                'persyaratan' => $persyaratan,
+                'unit_kompetensi' => $units,
             ];
         });
 
-        // Add dokumen per skema
-        $data['dokumen_skema'] = AsesiDoc::where('id_asesi', $asesi->no_pendaftaran)
+        // Top level shortcuts for primary registered skema
+        $primarySkema = $data['skema_diikuti']->first();
+        if ($primarySkema) {
+            $data['skema_nama'] = $primarySkema['judul'];
+            $data['skema_kode'] = $primarySkema['kode_skema'];
+            $data['skema_id'] = $primarySkema['id'];
+            $data['biaya'] = $primarySkema['biaya'];
+            $data['tujuan_sertifikasi'] = $primarySkema['tujuan_sertifikasi'];
+            $data['persyaratan_skema'] = $primarySkema['persyaratan'];
+            $data['unit_kompetensi'] = $primarySkema['unit_kompetensi'];
+        }
+
+        // Add dokumen per skema & sinkronisasi portofolio dari Syarat Tambahan
+        $dokumenSkema = AsesiDoc::where('id_asesi', $asesi->no_pendaftaran)
             ->get()
-            ->map(function ($doc) {
+            ->map(function ($doc) use ($asesi) {
+                $statusVerif = match ($doc->status) {
+                    'A', 'V' => 'V',
+                    'R', 'D' => 'D',
+                    default => ($asesi->verifikasi === 'V' ? 'V' : 'P'),
+                };
+                $statusLabel = $statusVerif === 'V' ? 'Terverifikasi' : ($statusVerif === 'D' ? 'Ditolak' : 'Menunggu Persetujuan');
                 return [
                     'id' => $doc->id,
-                    'jenis_doc' => $doc->jenis_doc,
-                    'file' => $doc->file_url,
-                    'verifikasi' => $doc->verifikasi,
-                    'verifikasi_label' => $doc->verifikasi_label,
+                    'jenis_doc' => $doc->nama_doc ?: ($doc->jenis_doc ?: 'Sertifikat Kompetensi'),
+                    'nama_doc' => $doc->nama_doc ?: ($doc->jenis_doc ?: 'Sertifikat Kompetensi'),
+                    'file' => $doc->file_url ?: (!empty($doc->file) ? asset('storage/foto_asesi/' . $doc->file) : null),
+                    'nomor_doc' => $doc->nomor_doc ?: (string) $doc->id,
+                    'tgl_doc' => $doc->tgl_doc ? \Carbon\Carbon::parse($doc->tgl_doc)->format('d/m/Y') : null,
+                    'verifikasi' => $statusVerif,
+                    'verifikasi_label' => $statusLabel,
                     'catatan' => $doc->catatan,
                 ];
-            });
+            })
+            ->toArray();
+
+        $existingFiles = array_filter(array_map(function ($d) {
+            return basename($d['file'] ?? '');
+        }, $dokumenSkema));
+
+        $sertifikatKompetensiLain = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
+        if (!empty($sertifikatKompetensiLain) && !in_array($sertifikatKompetensiLain, $existingFiles, true)) {
+            $statusRaw = $verifDok['sertifikat_kompetensi_lain'] ?? ($verifDok['transkrip'] ?? 'terupload');
+            $isVerif = ($asesi->verifikasi === 'V') || ($statusRaw === 'terverifikasi');
+            $verifCode = $isVerif ? 'V' : ($statusRaw === 'ditolak' ? 'D' : 'P');
+            $verifLabel = $isVerif ? 'Terverifikasi' : ($statusRaw === 'ditolak' ? 'Ditolak' : 'Menunggu Persetujuan');
+
+            $tglDocFormatted = $asesi->tgl_sertifikat
+                ? \Carbon\Carbon::parse($asesi->tgl_sertifikat)->format('d/m/Y')
+                : ($asesi->tgl_daftar ? \Carbon\Carbon::parse($asesi->tgl_daftar)->format('d/m/Y') : date('d/m/Y'));
+
+            $dokumenSkema[] = [
+                'id' => 'skema_kompetensi_lain',
+                'jenis_doc' => 'Sertifikat Pelatihan Relevan',
+                'nama_doc' => 'Sertifikat Pelatihan Relevan / Kompetensi',
+                'file' => asset('storage/foto_asesi/' . $sertifikatKompetensiLain),
+                'nomor_doc' => $asesi->no_sertifikat ?: ($asesi->no_pendaftaran),
+                'tgl_doc' => $tglDocFormatted,
+                'verifikasi' => $verifCode,
+                'verifikasi_label' => $verifLabel,
+                'catatan' => null,
+            ];
+            $existingFiles[] = $sertifikatKompetensiLain;
+        }
+
+        if (!empty($asesi->sertifikat_atpa_ktpa) && !in_array($asesi->sertifikat_atpa_ktpa, $existingFiles, true)) {
+            $statusRaw = $verifDok['sertifikat_atpa_ktpa'] ?? 'terupload';
+            $isVerif = ($asesi->verifikasi === 'V') || ($statusRaw === 'terverifikasi');
+            $verifCode = $isVerif ? 'V' : ($statusRaw === 'ditolak' ? 'D' : 'P');
+            $verifLabel = $isVerif ? 'Terverifikasi' : ($statusRaw === 'ditolak' ? 'Ditolak' : 'Menunggu Persetujuan');
+
+            $tglDocFormatted = $asesi->tgl_daftar
+                ? \Carbon\Carbon::parse($asesi->tgl_daftar)->format('d/m/Y')
+                : date('d/m/Y');
+
+            $dokumenSkema[] = [
+                'id' => 'skema_atpa_ktpa',
+                'jenis_doc' => 'Sertifikat ATPA/KTPA Sebelumnya',
+                'nama_doc' => 'Sertifikat ATPA/KTPA Sebelumnya',
+                'file' => asset('storage/foto_asesi/' . $asesi->sertifikat_atpa_ktpa),
+                'nomor_doc' => $asesi->no_pendaftaran,
+                'tgl_doc' => $tglDocFormatted,
+                'verifikasi' => $verifCode,
+                'verifikasi_label' => $verifLabel,
+                'catatan' => null,
+            ];
+            $existingFiles[] = $asesi->sertifikat_atpa_ktpa;
+        }
+
+        $data['dokumen_skema'] = $dokumenSkema;
 
         return $data;
     }

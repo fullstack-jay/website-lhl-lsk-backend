@@ -231,7 +231,7 @@ class PesertaSkemaController extends Controller
                 ],
                 [
                     'key' => 'sertifikat_kompetensi_lain',
-                    'label' => 'Sertifikat Pelatihan Relevan',
+                    'label' => 'Sertifikat Pelatihan Relevan / Portofolio',
                     'sublabel' => 'Jika ada',
                     'wajib' => false,
                     'file' => $sertifikatKompetensiLain,
@@ -249,7 +249,7 @@ class PesertaSkemaController extends Controller
                 ],
                 [
                     'key' => 'sertifikat_atpa_ktpa',
-                    'label' => 'Sertifikat ATPA/KTPA Sebelumnya',
+                    'label' => 'Sertifikat ATPA/KTPA Sebelumnya / Portofolio',
                     'sublabel' => 'Jika ada',
                     'wajib' => false,
                     'file' => $asesi->sertifikat_atpa_ktpa,

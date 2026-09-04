@@ -113,10 +113,36 @@ class PesertaDashboardController extends Controller
             $dokLengkap = false;
         }
 
-        // ── Verifikasi profil (ACC admin) — docs/LOGIC_VERIFIKASI_DOC_PESERTA.md §4 ──
-        // hijau HANYA bila asesi.verifikasi='V'; zero-date guard menang walau 'V'
-        $profilTerverifikasi = ($asesi->verifikasi === 'V');
-        if ($profilPerluLengkapi) {
+        // ── Cek apakah semua 4 dokumen persyaratan pokok sudah terverifikasi ──
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
+        $allWajibVerified = true;
+        foreach ($wajibShortcodes as $sc) {
+            $alias = match ($sc) {
+                'sertifikat_amdal' => 'sertifikat',
+                'bukti_keterlibatan' => 'suket',
+                'dokumen_amdal' => 'salinan_dokumen',
+                default => null,
+            };
+            $scVerif = ($verifDok[$sc] ?? '') === 'terverifikasi' || ($alias && ($verifDok[$alias] ?? '') === 'terverifikasi');
+            if (!$scVerif) {
+                $allWajibVerified = false;
+                break;
+            }
+        }
+
+        // Sinkronisasi status verifikasi asesi jika semua syarat pokok terverifikasi
+        if ($allWajibVerified && $asesi->verifikasi !== 'V') {
+            $asesi->verifikasi = 'V';
+            $asesi->save();
+        }
+
+        // ── Verifikasi profil (ACC admin / Syarat Pokok Terverifikasi) ──
+        $profilTerverifikasi = ($asesi->verifikasi === 'V') || $allWajibVerified;
+        if (empty($tglLahir) || $tglLahir === '0000-00-00') {
             $profilTerverifikasi = false;
         }
 
@@ -223,8 +249,9 @@ class PesertaDashboardController extends Controller
 
                 'ringkasan' => [
                     'dokumen_wajib' => ['ada' => $dokumenAda, 'total' => $wajib->count()],
-                    'profil_terverifikasi' => $profilTerverifikasi,   // ⭐ ACC admin (verifikasi='V')
+                    'profil_terverifikasi' => $profilTerverifikasi,   // ⭐ ACC admin / Syarat Pokok Terverifikasi
                     'verifikasi' => $asesi->verifikasi,               // ⭐ nilai mentah 'P'|'V'
+                    'syarat_pokok_terverifikasi' => $allWajibVerified,
                     'profil_perlu_lengkapi' => $profilPerluLengkapi,
                     'total_skema_diikuti' => AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)->count(),
                     'sertifikat_terbit' => $sertifikat ? 1 : 0,

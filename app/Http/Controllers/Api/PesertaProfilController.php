@@ -97,6 +97,34 @@ class PesertaProfilController extends Controller
         $buktiKeterlibatan = $asesi->bukti_keterlibatan ?: $asesi->suket;
         $sertifikatKompetensiLain = $asesi->sertifikat_kompetensi_lain ?: $asesi->transkrip;
 
+                // Cek apakah 4 syarat pokok terverifikasi
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
+        $allWajibVerified = true;
+        foreach ($wajibShortcodes as $sc) {
+            $alias = match ($sc) {
+                'sertifikat_amdal' => 'sertifikat',
+                'bukti_keterlibatan' => 'suket',
+                'dokumen_amdal' => 'salinan_dokumen',
+                default => null,
+            };
+            $scVerif = ($verifDok[$sc] ?? '') === 'terverifikasi' || ($alias && ($verifDok[$alias] ?? '') === 'terverifikasi');
+            if (!$scVerif) {
+                $allWajibVerified = false;
+                break;
+            }
+        }
+
+        if ($allWajibVerified && $asesi->verifikasi !== 'V') {
+            $asesi->verifikasi = 'V';
+            $asesi->save();
+        }
+
+        $isVerified = ($asesi->verifikasi === 'V') || $allWajibVerified;
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -125,9 +153,10 @@ class PesertaProfilController extends Controller
                 'no_sertifikat' => $asesi->no_sertifikat,
                 'tgl_sertifikat' => $asesi->tgl_sertifikat ? $asesi->tgl_sertifikat->format('Y-m-d') : null,
                 'angkatan' => $asesi->angkatan,
-                'verifikasi' => $asesi->verifikasi,
-                'verifikasi_dokumen' => $asesi->verifikasi_dokumen,
-                'profil_terverifikasi' => ($asesi->verifikasi === 'V'),
+                'verifikasi' => $isVerified ? 'V' : $asesi->verifikasi,
+                'verifikasi_dokumen' => $verifDok,
+                'profil_terverifikasi' => $isVerified,
+                'syarat_pokok_terverifikasi' => $allWajibVerified,
                 'blokir' => $asesi->blokir,
                 
                 // Syarat Dasar / Pokok

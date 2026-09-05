@@ -922,10 +922,35 @@ class AsesiController extends Controller
 
             if ($newVerifikasi === 'V') {
                 // Pastikan pembayaran sudah divalidasi oleh Admin (lunas)
-                $isLunas = ($asesi->biaya_asesmen === 'L') || \Illuminate\Support\Facades\DB::table('asesi_pembayaran')
-                    ->where('id_asesi', $asesi->id_asesi)
+                $isLunas = \Illuminate\Support\Facades\DB::table('asesi_pembayaran')
+                    ->where(function ($q) use ($asesi) {
+                        $q->where('id_asesi', $asesi->no_pendaftaran)
+                          ->orWhere('id_asesi', (string) $asesi->id);
+                        if (!empty($asesi->no_ktp)) {
+                            $q->orWhere('id_asesi', $asesi->no_ktp);
+                        }
+                        if (!empty($asesi->id_asesi)) {
+                            $q->orWhere('id_asesi', $asesi->id_asesi);
+                        }
+                    })
                     ->where('status', 'V')
                     ->exists();
+
+                if (!$isLunas) {
+                    $isLunas = \Illuminate\Support\Facades\DB::table('asesi_asesmen')
+                        ->where(function ($q) use ($asesi) {
+                            $q->where('id_asesi', $asesi->no_pendaftaran)
+                              ->orWhere('id_asesi', (string) $asesi->id);
+                            if (!empty($asesi->no_ktp)) {
+                                $q->orWhere('id_asesi', $asesi->no_ktp);
+                            }
+                            if (!empty($asesi->id_asesi)) {
+                                $q->orWhere('id_asesi', $asesi->id_asesi);
+                            }
+                        })
+                        ->where('biaya_asesmen', 'L')
+                        ->exists();
+                }
 
                 if (!$isLunas) {
                     return response()->json([
@@ -1632,6 +1657,10 @@ class AsesiController extends Controller
         }
 
         // Add dokumen per skema & sinkronisasi portofolio dari Syarat Tambahan
+        $verifDok = $data['verifikasi_dokumen'] ?? (is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []));
+
         $dokumenSkema = AsesiDoc::where('id_asesi', $asesi->no_pendaftaran)
             ->get()
             ->map(function ($doc) use ($asesi) {

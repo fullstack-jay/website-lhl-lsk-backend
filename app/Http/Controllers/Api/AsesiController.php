@@ -921,6 +921,19 @@ class AsesiController extends Controller
             $newVerifikasi = $request->verifikasi; // 'V' or 'P' or 'D'
 
             if ($newVerifikasi === 'V') {
+                // Pastikan pembayaran sudah divalidasi oleh Admin (lunas)
+                $isLunas = ($asesi->biaya_asesmen === 'L') || \Illuminate\Support\Facades\DB::table('asesi_pembayaran')
+                    ->where('id_asesi', $asesi->id_asesi)
+                    ->where('status', 'V')
+                    ->exists();
+
+                if (!$isLunas) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Permohonan sertifikasi tidak dapat disetujui karena status pembayaran belum divalidasi oleh Admin.',
+                    ], 422);
+                }
+
                 // Pastikan 4 dokumen pokok sudah terverifikasi
                 $verif = is_array($asesi->verifikasi_dokumen)
                     ? $asesi->verifikasi_dokumen

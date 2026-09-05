@@ -275,6 +275,13 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'update']);
 
+    // Konfirmasi Pembayaran (konfpay) — docs/BACKEND_KONFIRMASI_PEMBAYARAN.md
+    Route::get('/konfirmasi-pembayaran', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'index']);
+    Route::get('/konfirmasi-pembayaran/jalur', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'jalur']);
+    Route::get('/konfirmasi-pembayaran/rekening', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'rekening']);
+    Route::post('/konfirmasi-pembayaran', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'store']);
+    Route::delete('/konfirmasi-pembayaran/{id}', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'destroy']);
+
     // Skema Sertifikasi — Portal Peserta (docs/BACKEND_PESERTA_SKEMA_SERTIFIKASI.md)
     Route::get('/skema', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'index']);
     Route::get('/skema/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'show']);
@@ -540,6 +547,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiController::class, 'updateBlokir']);
         Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi']);
         Route::put('/{noPendaftaran}/verifikasi-dokumen', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasiDokumen']);
+        Route::put('/{noPendaftaran}/validasi-pembayaran', [\App\Http\Controllers\Api\AsesiController::class, 'updateValidasiPembayaran']);
     });
 
     // Calon Peserta Baru (asesibaru) routes — sesuai docs/BACKEND_CALONPESERTABARU.md

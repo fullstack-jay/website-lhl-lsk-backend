@@ -1091,6 +1091,76 @@ class AsesiController extends Controller
         ]);
     }
 
+    /**
+     * Validasi status pembayaran peserta (admin)
+     * Mengubah status asesi_pembayaran (P -> V) dan asesi_asesmen.biaya_asesmen (K -> L)
+     */
+    public function updateValidasiPembayaran(Request $request, $noPendaftaran)
+    {
+        $asesi = Asesi::where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('id', $noPendaftaran)
+            ->first();
+
+        if (!$asesi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $status = $request->input('status', 'V'); // 'V' untuk validasi/lunas, 'P' untuk batalkan validasi
+        $idPembayaran = $request->input('id_pembayaran');
+
+        \DB::beginTransaction();
+        try {
+            $pembayaranQuery = \DB::table('asesi_pembayaran')
+                ->where(function ($q) use ($asesi) {
+                    $q->where('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                });
+
+            if ($idPembayaran) {
+                $pembayaranQuery->where('id', $idPembayaran);
+            } else {
+                $pembayaranQuery->orderBy('id', 'desc');
+            }
+
+            $pembayaran = $pembayaranQuery->first();
+            if ($pembayaran) {
+                \DB::table('asesi_pembayaran')
+                    ->where('id', $pembayaran->id)
+                    ->update(['status' => $status]);
+            }
+
+            // Update asesi_asesmen: 'L' jika 'V', atau 'K' jika 'P' (atau 'P' jika belum ada pembayaran)
+            $newBiayaAsesmen = $status === 'V' ? 'L' : ($pembayaran ? 'K' : 'P');
+            \DB::table('asesi_asesmen')
+                ->where(function ($q) use ($asesi) {
+                    $q->where('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                })
+                ->update(['biaya_asesmen' => $newBiayaAsesmen]);
+
+            \DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => $status === 'V' ? 'Pembayaran berhasil divalidasi (Lunas).' : 'Validasi pembayaran dibatalkan.',
+                'data' => [
+                    'status' => $status,
+                    'biaya_asesmen' => $newBiayaAsesmen,
+                    'pembayaran_id' => $pembayaran ? $pembayaran->id : null,
+                ]
+            ]);
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal validasi pembayaran: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function statistics()
     {
         // Tab statistics
@@ -1626,6 +1696,43 @@ class AsesiController extends Controller
         }
 
         $data['dokumen_skema'] = $dokumenSkema;
+
+        // Pembayaran asesi (konfirmasi pembayaran & bukti transfer)
+        $pembayaranItems = \DB::table('asesi_pembayaran')
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->orWhere('id_asesi', (string) $asesi->id)
+            ->orderBy('id', 'desc')
+            ->get()
+            ->map(function ($p) {
+                $rek = \DB::table('rekeningbayar')->where('id', $p->tujuan_rek)->first();
+                $rekLabel = $rek ? "{$rek->bank} {$rek->norek} a.n. {$rek->atasnama}" : ($p->tujuan_rek ? "Rekening #{$p->tujuan_rek}" : '-');
+                return [
+                    'id' => $p->id,
+                    'id_asesmen' => $p->id_asesmen,
+                    'metode_bayar' => $p->metode_bayar,
+                    'jalur_bayar' => $p->jalur_bayar,
+                    'tujuan_rek' => $p->tujuan_rek,
+                    'rekening_label' => $rekLabel,
+                    'nominal' => (int) $p->nominal,
+                    'nominal_formatted' => number_format((float) $p->nominal, 0, ',', '.'),
+                    'tgl_bayar' => $p->tgl_bayar,
+                    'jam_bayar' => $p->jam_bayar ? substr((string) $p->jam_bayar, 0, 5) : null,
+                    'file' => $p->file,
+                    'bukti_url' => !empty($p->file) ? asset('foto_asesibayar/' . $p->file) : null,
+                    'status' => $p->status,
+                    'status_label' => $p->status === 'V' ? 'Telah Divalidasi' : 'Menunggu Validasi',
+                    'waktu' => $p->waktu,
+                ];
+            });
+
+        $primaryAsesmen = \App\Models\AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
+            ->orWhere('id_asesi', (string) $asesi->id)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $data['pembayaran'] = $pembayaranItems->values()->toArray();
+        $data['pembayaran_terakhir'] = $pembayaranItems->first();
+        $data['biaya_asesmen_status'] = $primaryAsesmen ? $primaryAsesmen->biaya_asesmen : 'P';
 
         return $data;
     }

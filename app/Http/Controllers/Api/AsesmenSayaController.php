@@ -90,8 +90,8 @@ class AsesmenSayaController extends Controller
         }
 
         // ── Render list: state machine per baris ──
-        $asesmenList = $rows->map(function ($m) use ($modePupr) {
-            return $this->transformAsesmen($m, $modePupr);
+        $asesmenList = $rows->map(function ($m) use ($modePupr, $asesi) {
+            return $this->transformAsesmen($m, $modePupr, $asesi);
         });
 
         return response()->json([
@@ -112,7 +112,7 @@ class AsesmenSayaController extends Controller
     // STATE MACHINE 2 DIMENSI (matriks status → pesan + tombol §3)
     // ════════════════════════════════════════════════════════════════
 
-    private function transformAsesmen(AsesiAsesmen $m, bool $modePupr): array
+    private function transformAsesmen(AsesiAsesmen $m, bool $modePupr, ?Asesi $asesi = null): array
     {
         // Label skema (JOIN skema_kkni)
         $skema = null;
@@ -122,21 +122,43 @@ class AsesmenSayaController extends Controller
             $skema = $s ? ['id' => (int) $s->id, 'kode_skema' => $s->kode_skema, 'judul' => $s->judul] : null;
         }
 
-        // Cek kelengkapan dokumen per skema_persyaratan — AKUMULASI (fix bug
-        // loop-overwrite native yang hanya menampilkan syarat terakhir)
+        if (!$asesi) {
+            $asesi = Asesi::where('no_pendaftaran', $m->id_asesi)
+                ->orWhere('id', $m->id_asesi)
+                ->first();
+        }
+
+        // Cek kelengkapan dokumen persyaratan — sinkron dengan Syarat Dasar / Pokok (WAJIB)
+        // yang diambil otomatis dari profil peserta & asesi_doc
         $dokumenKurang = [];
         try {
-            $persyaratan = DB::table('skema_persyaratan')
-                ->where('id_skemakkni', $m->id_skemakkni)
-                ->get(['id', 'persyaratan']);
-            foreach ($persyaratan as $sp) {
-                $ada = DB::table('asesi_doc')
-                    ->where('id_asesi', $m->id_asesi)
-                    ->where('id_skemakkni', $m->id_skemakkni)
-                    ->where('skema_persyaratan', $sp->id)
-                    ->exists();
-                if (!$ada) {
-                    $dokumenKurang[] = $sp->persyaratan;
+            $wajib = \App\Models\AsesiPersyaratanpokok::wajib()->aktif()->orderBy('id')->get();
+            foreach ($wajib as $p) {
+                $hasFile = false;
+                if ($asesi) {
+                    $hasFile = match ($p->shortcode) {
+                        'sertifikat_amdal', 'sertifikat' => !empty($asesi->sertifikat_amdal) || !empty($asesi->sertifikat),
+                        'bukti_keterlibatan', 'suket' => !empty($asesi->bukti_keterlibatan) || !empty($asesi->suket),
+                        'sertifikat_kompetensi_lain', 'transkrip' => !empty($asesi->sertifikat_kompetensi_lain) || !empty($asesi->transkrip),
+                        default => !empty($asesi->{$p->shortcode}),
+                    };
+                }
+
+                if (!$hasFile) {
+                    $hasFile = DB::table('asesi_doc')
+                        ->where('id_asesi', $m->id_asesi)
+                        ->whereNotNull('file')
+                        ->where('file', '!=', '')
+                        ->where(function ($q) use ($p) {
+                            $q->where('nama_doc', 'like', '%' . $p->persyaratan . '%')
+                              ->orWhere('jenis_doc', 'like', '%' . $p->persyaratan . '%')
+                              ->orWhere('skema_persyaratan', (string) $p->id);
+                        })
+                        ->exists();
+                }
+
+                if (!$hasFile) {
+                    $dokumenKurang[] = $p->persyaratan;
                 }
             }
         } catch (\Throwable $e) {

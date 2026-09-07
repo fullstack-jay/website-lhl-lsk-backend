@@ -789,4 +789,252 @@ class JadwalAsesmenController extends Controller
             'message' => 'Penguji berhasil dilepas dari jadwal',
         ]);
     }
+
+    /**
+     * Get documents for a schedule
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getDokumen($id)
+    {
+        $jadwal = JadwalAsesmen::find($id);
+
+        if (!$jadwal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal asesmen tidak ditemukan',
+            ], 404);
+        }
+
+        $dokumen = [
+            'surattugas' => [
+                'key' => 'surattugas',
+                'nama' => 'Surat Tugas Asesor',
+                'deskripsi' => 'Dokumen resmi penugasan asesor untuk asesmen kompetensi',
+                'nomor' => $jadwal->no_surattugas,
+                'file' => $jadwal->file_surattugas,
+                'file_url' => $jadwal->file_surattugas ? asset('foto_surat/' . $jadwal->file_surattugas) : null,
+                'has_nomor' => true,
+                'has_tanggal' => false,
+            ],
+            'surattugaskomtek' => [
+                'key' => 'surattugaskomtek',
+                'nama' => 'Surat Tugas Komite Teknis',
+                'deskripsi' => 'Surat penugasan anggota komite teknis uji kompetensi',
+                'nomor' => $jadwal->no_surattugaskomtek,
+                'tanggal' => $jadwal->tgl_surattugaskomtek ? (is_string($jadwal->tgl_surattugaskomtek) ? substr($jadwal->tgl_surattugaskomtek, 0, 10) : $jadwal->tgl_surattugaskomtek->format('Y-m-d')) : null,
+                'file' => $jadwal->file_surattugaskomtek,
+                'file_url' => $jadwal->file_surattugaskomtek ? asset('foto_surat/' . $jadwal->file_surattugaskomtek) : null,
+                'has_nomor' => true,
+                'has_tanggal' => true,
+            ],
+            'surattugasia11' => [
+                'key' => 'surattugasia11',
+                'nama' => 'Surat Tugas Peninjau (FR.IA.11)',
+                'deskripsi' => 'Surat penugasan peninjau instrumen asesmen FR.IA.11',
+                'nomor' => $jadwal->no_surattugasia11,
+                'tanggal' => $jadwal->tgl_surattugasia11 ? (is_string($jadwal->tgl_surattugasia11) ? substr($jadwal->tgl_surattugasia11, 0, 10) : $jadwal->tgl_surattugasia11->format('Y-m-d')) : null,
+                'file' => $jadwal->file_surattugasia11,
+                'file_url' => $jadwal->file_surattugasia11 ? asset('foto_surat/' . $jadwal->file_surattugasia11) : null,
+                'has_nomor' => true,
+                'has_tanggal' => true,
+            ],
+            'bakomite' => [
+                'key' => 'bakomite',
+                'nama' => 'Berita Acara (BA) Komite',
+                'deskripsi' => 'Berita acara rapat pleno komite teknis pengambilan keputusan',
+                'nomor' => $jadwal->no_bakomite,
+                'file' => $jadwal->file_bakomite,
+                'file_url' => $jadwal->file_bakomite ? asset('foto_surat/' . $jadwal->file_bakomite) : null,
+                'has_nomor' => true,
+                'has_tanggal' => false,
+            ],
+            'skkeputusan' => [
+                'key' => 'skkeputusan',
+                'nama' => 'Surat Keputusan (SK) Hasil Asesmen',
+                'deskripsi' => 'SK penetapan hasil uji sertifikasi kompetensi',
+                'nomor' => $jadwal->no_skkeputusan,
+                'file' => $jadwal->file_skkeputusan,
+                'file_url' => $jadwal->file_skkeputusan ? asset('foto_surat/' . $jadwal->file_skkeputusan) : null,
+                'has_nomor' => true,
+                'has_tanggal' => false,
+            ],
+            'permohonanblangko' => [
+                'key' => 'permohonanblangko',
+                'nama' => 'Permohonan Blangko Sertifikat',
+                'deskripsi' => 'Surat permohonan penerbitan blangko sertifikat kompetensi',
+                'nomor' => $jadwal->no_permohonanblangko,
+                'file' => $jadwal->file_permohonanblangko,
+                'file_url' => $jadwal->file_permohonanblangko ? asset('foto_surat/' . $jadwal->file_permohonanblangko) : null,
+                'has_nomor' => true,
+                'has_tanggal' => false,
+            ],
+            'dokskkni' => [
+                'key' => 'dokskkni',
+                'nama' => 'Dokumen Standar Kompetensi (SKKNI)',
+                'deskripsi' => 'Dokumen acuan standar kompetensi skema yang diujikan',
+                'nomor' => null,
+                'file' => $jadwal->dok_standarkompetensi,
+                'file_url' => $jadwal->dok_standarkompetensi ? asset('foto_dokskkni/' . $jadwal->dok_standarkompetensi) : null,
+                'has_nomor' => false,
+                'has_tanggal' => false,
+            ],
+        ];
+
+        $uploadedCount = 0;
+        foreach ($dokumen as $d) {
+            if (!empty($d['file'])) {
+                $uploadedCount++;
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'jadwal_id' => (int) $jadwal->id,
+                'nama_kegiatan' => $jadwal->nama_kegiatan,
+                'total_dokumen' => count($dokumen),
+                'uploaded_dokumen' => $uploadedCount,
+                'is_lengkap' => $uploadedCount === count($dokumen),
+                'dokumen' => $dokumen,
+            ],
+        ]);
+    }
+
+    /**
+     * Update/Upload documents for a schedule
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updateDokumen(\Illuminate\Http\Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::find($id);
+
+        if (!$jadwal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal asesmen tidak ditemukan',
+            ], 404);
+        }
+
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+            'no_surattugas' => 'nullable|string|max:255',
+            'file_surattugas' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'no_surattugaskomtek' => 'nullable|string|max:255',
+            'tgl_surattugaskomtek' => 'nullable|date',
+            'file_surattugaskomtek' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'no_surattugasia11' => 'nullable|string|max:255',
+            'tgl_surattugasia11' => 'nullable|date',
+            'file_surattugasia11' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'no_bakomite' => 'nullable|string|max:255',
+            'file_bakomite' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'no_skkeputusan' => 'nullable|string|max:255',
+            'file_skkeputusan' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'no_permohonanblangko' => 'nullable|string|max:255',
+            'file_permohonanblangko' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+            'dok_standarkompetensi' => 'nullable|file|mimes:pdf,doc,docx|max:10240',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal: ' . implode(', ', $validator->errors()->all()),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Text & date fields
+        $fields = [
+            'no_surattugas',
+            'no_surattugaskomtek',
+            'tgl_surattugaskomtek',
+            'no_surattugasia11',
+            'tgl_surattugasia11',
+            'no_bakomite',
+            'no_skkeputusan',
+            'no_permohonanblangko',
+        ];
+
+        foreach ($fields as $field) {
+            if ($request->has($field)) {
+                $jadwal->{$field} = $request->input($field);
+            }
+        }
+
+        // Files
+        $fileConfigs = [
+            'file_surattugas' => 'surattugas',
+            'file_surattugaskomtek' => 'surattugas',
+            'file_surattugasia11' => 'surattugas',
+            'file_bakomite' => 'surattugas',
+            'file_skkeputusan' => 'surattugas',
+            'file_permohonanblangko' => 'surattugas',
+            'dok_standarkompetensi' => 'dokskkni',
+        ];
+
+        foreach ($fileConfigs as $field => $folderType) {
+            if ($request->hasFile($field)) {
+                if ($jadwal->{$field}) {
+                    $this->deleteFile($jadwal->{$field}, $folderType);
+                }
+                $file = $request->file($field);
+                $fileName = $this->uploadFile($file, $folderType);
+                $jadwal->{$field} = $fileName;
+            }
+        }
+
+        $jadwal->save();
+
+        return $this->getDokumen($id);
+    }
+
+    /**
+     * Delete a document file from schedule
+     *
+     * @param int $id
+     * @param string $jenis
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function deleteDokumen($id, $jenis)
+    {
+        $jadwal = JadwalAsesmen::find($id);
+
+        if (!$jadwal) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jadwal asesmen tidak ditemukan',
+            ], 404);
+        }
+
+        $mapping = [
+            'surattugas' => ['file' => 'file_surattugas', 'type' => 'surattugas', 'no' => 'no_surattugas'],
+            'surattugaskomtek' => ['file' => 'file_surattugaskomtek', 'type' => 'surattugas', 'no' => 'no_surattugaskomtek'],
+            'surattugasia11' => ['file' => 'file_surattugasia11', 'type' => 'surattugas', 'no' => 'no_surattugasia11'],
+            'bakomite' => ['file' => 'file_bakomite', 'type' => 'surattugas', 'no' => 'no_bakomite'],
+            'skkeputusan' => ['file' => 'file_skkeputusan', 'type' => 'surattugas', 'no' => 'no_skkeputusan'],
+            'permohonanblangko' => ['file' => 'file_permohonanblangko', 'type' => 'surattugas', 'no' => 'no_permohonanblangko'],
+            'dokskkni' => ['file' => 'dok_standarkompetensi', 'type' => 'dokskkni', 'no' => null],
+        ];
+
+        if (!isset($mapping[$jenis])) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Jenis dokumen tidak valid',
+            ], 400);
+        }
+
+        $cfg = $mapping[$jenis];
+        $fileCol = $cfg['file'];
+
+        if ($jadwal->{$fileCol}) {
+            $this->deleteFile($jadwal->{$fileCol}, $cfg['type']);
+            $jadwal->{$fileCol} = null;
+            $jadwal->save();
+        }
+
+        return $this->getDokumen($id);
+    }
 }

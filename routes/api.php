@@ -514,6 +514,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/{id}/penguji-tersedia', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPengujiTersedia']);
         Route::post('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignPenguji']);
         Route::delete('/{id}/penguji/{idAsesor}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignPenguji']);
+        Route::get('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getDokumen']);
+        Route::post('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateDokumen']);
+        Route::delete('/{id}/dokumen/{jenis}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'deleteDokumen']);
         Route::post('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'destroy']);

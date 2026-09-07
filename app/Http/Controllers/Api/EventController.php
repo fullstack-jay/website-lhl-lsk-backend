@@ -42,26 +42,50 @@ class EventController extends Controller
 
         // Get additional data for each event
         $data = collect($events->items())->map(function ($event) {
-            // Get all jadwal for this event
-            $jadwals = JadwalAsesmen::byEvent($event->id_event)
+            // Get all jadwal for this event (handle null/empty id_event)
+            if (empty($event->id_event)) {
+                $jadwals = JadwalAsesmen::where(function($q) {
+                    $q->whereNull('id_event')->orWhere('id_event', '');
+                })
                 ->with(['skema:id,judul,kode_skema', 'tuk:id,nama,alamat,kelurahan'])
                 ->get();
+            } else {
+                $jadwals = JadwalAsesmen::where('id_event', $event->id_event)
+                    ->with(['skema:id,judul,kode_skema', 'tuk:id,nama,alamat,kelurahan'])
+                    ->get();
+            }
 
-            // Count total peserta
+            // Count total peserta via direct DB count
             $totalPeserta = 0;
             foreach ($jadwals as $jadwal) {
-                $totalPeserta += $jadwal->asesi()->count();
+                $totalPeserta += \DB::table('asesi_asesmen')
+                    ->where('id_jadwal', $jadwal->id)
+                    ->count();
             }
 
             // Get unique locations
-            $locations = $jadwals->pluck('tuk.nama')->unique()->values()->implode(', ');
+            $locations = $jadwals->pluck('tuk.nama')->filter()->unique()->values()->implode(', ');
+            $firstJadwal = $jadwals->first();
+
+            $namaKegiatan = $event->id_event ?: ($firstJadwal ? $firstJadwal->nama_kegiatan : 'Event Penyelenggaraan Uji');
+            $periode = $firstJadwal ? $firstJadwal->periode : null;
+            $tahun = $firstJadwal ? $firstJadwal->tahun : null;
+            $gelombang = $firstJadwal ? $firstJadwal->gelombang : null;
+            $tukNama = $locations ?: ($firstJadwal && $firstJadwal->tuk ? $firstJadwal->tuk->nama : '-');
 
             return [
-                'id_event' => $event->id_event,
+                'id_event' => $event->id_event ?: ('EVT-JADWAL-' . ($firstJadwal ? $firstJadwal->id : '1')),
+                'raw_id_event' => $event->id_event,
+                'nama_kegiatan' => $namaKegiatan,
+                'periode' => $periode,
+                'tahun' => $tahun,
+                'gelombang' => $gelombang,
+                'tgl_asesmen' => $event->tgl_mulai,
                 'tgl_mulai' => $event->tgl_mulai,
                 'tgl_selesai' => $event->tgl_selesai,
-                'jumlah_jadwal' => $event->jumlah_jadwal,
+                'jumlah_jadwal' => $jadwals->count(),
                 'total_peserta' => $totalPeserta,
+                'tuk_nama' => $tukNama,
                 'lokasi' => $locations,
                 'jadwals' => $jadwals->map(function ($jadwal) {
                     return [

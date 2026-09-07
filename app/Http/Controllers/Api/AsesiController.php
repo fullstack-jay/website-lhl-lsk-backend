@@ -992,11 +992,27 @@ class AsesiController extends Controller
             $asesi->verifikasi = $newVerifikasi;
             $asesi->save();
 
+            // ── Sync asesi_asesmen.status ──────────────────────────────────────
+            // Ketika admin menyetujui (verifikasi='V') → status asesmen = 'A' (Approved)
+            // Ketika ditolak/dikembalikan → status asesmen kembali ke 'P' (Pending)
+            // Ini yang dibaca oleh portal peserta (AsesmenSayaController state machine)
+            $statusAsesmen = $newVerifikasi === 'V' ? 'A' : 'P';
+            \Illuminate\Support\Facades\DB::table('asesi_asesmen')
+                ->where(function ($q) use ($asesi) {
+                    $q->where('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                    if (!empty($asesi->no_ktp)) {
+                        $q->orWhere('id_asesi', $asesi->no_ktp);
+                    }
+                })
+                ->update(['status' => $statusAsesmen]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Status verifikasi berhasil diperbarui',
                 'data' => [
                     'verifikasi' => $asesi->verifikasi,
+                    'status_asesmen_sync' => $statusAsesmen,
                 ],
             ]);
         } catch (\Exception $e) {

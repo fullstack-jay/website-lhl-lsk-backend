@@ -508,6 +508,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/statistics', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'statistics']);
         Route::get('/options', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'options']);
         Route::get('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'show']);
+        Route::get('/{id}/peserta', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPeserta']);
+        Route::get('/{id}/peserta-tersedia', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPesertaTersedia']);
+        Route::get('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPenguji']);
+        Route::get('/{id}/penguji-tersedia', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPengujiTersedia']);
+        Route::post('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignPenguji']);
+        Route::delete('/{id}/penguji/{idAsesor}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignPenguji']);
         Route::post('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'store']);
         Route::put('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'update']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'destroy']);
@@ -556,6 +562,8 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiBaruController::class, 'updateBlokir']);
         Route::get('/{id}/kontak', [\App\Http\Controllers\Api\AsesiBaruController::class, 'kontak']);
         Route::post('/{id}/sms', [\App\Http\Controllers\Api\AsesiBaruController::class, 'kirimSms']);
+        Route::post('/{id}/plot-jadwal', [\App\Http\Controllers\Api\AsesiBaruController::class, 'plotJadwal']);
+        Route::delete('/{id}/plot-jadwal', [\App\Http\Controllers\Api\AsesiBaruController::class, 'unassignJadwal']);
         Route::delete('/{id}', [\App\Http\Controllers\Api\AsesiBaruController::class, 'destroy']);
         Route::delete('/{id}/pendaftaran/{idSkema}', [\App\Http\Controllers\Api\AsesiBaruController::class, 'destroyPendaftaran']);
     });

@@ -70,6 +70,7 @@ class AsesmenSayaController extends Controller
         }
 
         $rows = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
+            ->with(['jadwal.tuk', 'jadwal.asesor'])
             ->orderBy('id', 'desc')
             ->get();
 
@@ -165,6 +166,35 @@ class AsesmenSayaController extends Controller
             $dokumenKurang = [];
         }
 
+        // ── Detail Jadwal Asesmen (jika sudah dijadwalkan) ──
+        $jadwalData = null;
+        if (!empty($m->id_jadwal)) {
+            $j = $m->jadwal ?? \App\Models\JadwalAsesmen::with(['tuk', 'asesor'])->find($m->id_jadwal);
+            if ($j) {
+                $tglAwal = $j->tgl_asesmen ? (is_string($j->tgl_asesmen) ? substr($j->tgl_asesmen, 0, 10) : $j->tgl_asesmen->format('Y-m-d')) : null;
+                $tglAkhir = $j->tgl_asesmen_akhir ? (is_string($j->tgl_asesmen_akhir) ? substr($j->tgl_asesmen_akhir, 0, 10) : $j->tgl_asesmen_akhir->format('Y-m-d')) : null;
+                $jadwalData = [
+                    'id' => (int) $j->id,
+                    'nama_kegiatan' => $j->nama_kegiatan,
+                    'tgl_asesmen' => $tglAwal,
+                    'tgl_asesmen_akhir' => $tglAkhir,
+                    'jam_asesmen' => $j->jam_asesmen,
+                    'tuk_nama' => $j->tuk ? $j->tuk->nama : ($j->tempat_asesmen ?? null),
+                    'tuk_alamat' => $j->tuk ? trim($j->tuk->alamat) : null,
+                    'pelaksanaan_uji_label' => $j->pelaksanaan_uji_label,
+                    'penguji' => $j->asesor ? $j->asesor->map(function ($a) {
+                        $front = $a->gelar_depan ? $a->gelar_depan . ' ' : '';
+                        $back = $a->gelar_blk ? ', ' . $a->gelar_blk : '';
+                        return [
+                            'id' => $a->id,
+                            'nama' => $front . $a->nama . $back,
+                            'no_reg' => $a->no_reg ?? null,
+                        ];
+                    })->values()->all() : [],
+                ];
+            }
+        }
+
         // ── STATE MACHINE: status × (biaya_asesmen | status_asesmen) ──
         [$pesan, $warna, $aksi] = $this->deriveStatusMatriks(
             $m->status,
@@ -183,6 +213,7 @@ class AsesmenSayaController extends Controller
             'status_asesmen' => $m->status_asesmen,       // P | K | BK | TL
             'biaya_asesmen' => $m->biaya_asesmen,         // P | K | L
             'id_jadwal' => $m->id_jadwal,
+            'jadwal' => $jadwalData,
             'biaya' => $m->biaya ? (int) $m->biaya : null,
             'biaya_formatted' => $m->biaya ? number_format((float) $m->biaya, 0, ',', '.') : null,
             // Derived (state machine)
@@ -229,7 +260,7 @@ class AsesmenSayaController extends Controller
                     return [
                         'Anda dinyatakan BELUM KOMPETEN. Anda dapat mengajukan banding.',
                         'red',
-                        ['label' => 'Ajukan Banding', 'url' => "/peserta/banding?idass={$idAsesmen}&idj={$idj}"],
+                        ['label' => 'Ajukan Banding', 'url' => "/peserta/banding?idass={$idAsesmen}&idj={$idJadwal}"],
                     ];
                 case 'TL':
                     return [
@@ -237,14 +268,14 @@ class AsesmenSayaController extends Controller
                         'red',
                         // Fix dead-link native: modul 'pelatihan' tidak ada →
                         // diarahkan ke banding (jalur tindak lanjut fungsional)
-                        ['label' => 'Ajukan Banding / Tindak Lanjut', 'url' => "/peserta/banding?idass={$idAsesmen}&idj={$idj}"],
+                        ['label' => 'Ajukan Banding / Tindak Lanjut', 'url' => "/peserta/banding?idass={$idAsesmen}&idj={$idJadwal}"],
                     ];
                 case 'P':
                 default:
-                    $aksi = [['label' => 'Lihat Jadwal', 'url' => '/peserta/jadwal']];
+                    $aksi = null;
                     // PUPR + biaya P: + tombol konfirmasi bayar (kombinasi idem native)
                     if ($modePupr && $biaya === 'P') {
-                        $aksi[] = ['label' => 'Konfirmasi Pembayaran', 'url' => '/peserta/konfirmasi-pembayaran'];
+                        $aksi = ['label' => 'Konfirmasi Pembayaran', 'url' => '/peserta/konfirmasi-pembayaran'];
                     }
                     return ['Pendaftaran diterima dan dijadwalkan.', 'green', $aksi];
             }

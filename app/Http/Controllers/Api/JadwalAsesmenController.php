@@ -25,6 +25,7 @@ class JadwalAsesmenController extends Controller
             'tuk:id,nama,kode_tuk,alamat',
             'sumberAnggaran:id,jenis_anggaran',
             'pemberiAnggaran:id,nama_instansi',
+            'asesor:id,nama,gelar_depan,gelar_blk,no_lisensi',
         ]);
 
         // Search
@@ -481,6 +482,8 @@ class JadwalAsesmenController extends Controller
             'status' => $jadwal->status,
             'kapasitas' => $jadwal->kapasitas,
             'jumlah_peserta' => $jadwal->jumlah_peserta,
+            'peserta_terjadwal' => $jadwal->jumlah_peserta,
+            'peserta_asesmen_mandiri' => \DB::table('asesi_asesmen')->where('id_jadwal', $jadwal->id)->whereNotNull('status_apl02')->where('status_apl02', '!=', '')->count(),
             'sisa_kapasitas' => $jadwal->sisa_kapasitas,
             'skema' => $jadwal->skema ? [
                 'id' => $jadwal->skema->id,
@@ -505,6 +508,15 @@ class JadwalAsesmenController extends Controller
             'pelaksanaan_uji' => $jadwal->pelaksanaan_uji,
             'pelaksanaan_uji_label' => $jadwal->pelaksanaan_uji_label,
             'dokumen_lengkap' => $jadwal->dokumen_lengkap,
+            'penguji' => $jadwal->asesor ? $jadwal->asesor->map(function ($asesor) {
+                return [
+                    'id' => $asesor->id,
+                    'nama' => $asesor->nama,
+                    'gelar_depan' => $asesor->gelar_depan,
+                    'gelar_blk' => $asesor->gelar_blk,
+                    'no_lisensi' => $asesor->no_lisensi,
+                ];
+            }) : [],
         ];
 
         if ($detail) {
@@ -555,5 +567,226 @@ class JadwalAsesmenController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Get participants assigned to a schedule
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPeserta($id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $items = \App\Models\AsesiAsesmen::where('id_jadwal', $id)
+            ->join('asesi', 'asesi.no_pendaftaran', '=', 'asesi_asesmen.id_asesi')
+            ->select([
+                'asesi.id as id',
+                'asesi_asesmen.id as id_asesmen',
+                'asesi.no_pendaftaran',
+                'asesi.nama',
+                'asesi.no_ktp',
+                'asesi_asesmen.tgl_daftar',
+                'asesi_asesmen.status_asesmen',
+            ])
+            ->orderBy('asesi_asesmen.id', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Get available participants (not scheduled yet) for this schedule's skema
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPesertaTersedia(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+        $search = $request->query('search', '');
+
+        $query = \App\Models\AsesiAsesmen::whereNull('asesi_asesmen.id_jadwal')
+            ->where('asesi_asesmen.id_skemakkni', $jadwal->id_skemakkni)
+            ->where(function ($q) {
+                $q->where('asesi_asesmen.status', '!=', 'R')
+                  ->orWhereNull('asesi_asesmen.status');
+            })
+            ->join('asesi', 'asesi.no_pendaftaran', '=', 'asesi_asesmen.id_asesi')
+            ->leftJoin('skema_kkni', 'skema_kkni.id', '=', 'asesi_asesmen.id_skemakkni')
+            ->where('asesi.verifikasi', 'V')
+            ->where(function ($q) {
+                $q->where('asesi.blokir', '!=', 'Y')
+                  ->orWhereNull('asesi.blokir');
+            })
+            ->select([
+                'asesi.id as id',
+                'asesi_asesmen.id as id_asesmen',
+                'asesi.no_pendaftaran',
+                'asesi.nama',
+                'asesi.no_ktp',
+                'asesi_asesmen.id_skemakkni',
+                'skema_kkni.judul as judul_skema',
+            ]);
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('asesi.nama', 'like', "%{$search}%")
+                  ->orWhere('asesi.no_pendaftaran', 'like', "%{$search}%")
+                  ->orWhere('asesi.no_ktp', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $query->orderBy('asesi_asesmen.id', 'desc')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Get assessors assigned to a schedule
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPenguji($id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $items = $jadwal->asesor()->select([
+            'asesor.id',
+            'asesor.nama',
+            'asesor.gelar_depan',
+            'asesor.gelar_blk',
+            'asesor.no_lisensi',
+            'asesor.no_hp',
+            'asesor.email',
+        ])->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Get available assessors (not assigned to this schedule yet)
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPengujiTersedia(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+        $search = $request->query('search', '');
+
+        $assignedIds = \DB::table('jadwal_asesor')
+            ->where('id_jadwal', $id)
+            ->pluck('id_asesor');
+
+        $query = Asesor::whereNotIn('id', $assignedIds);
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%")
+                  ->orWhere('no_lisensi', 'like', "%{$search}%")
+                  ->orWhere('no_induk', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $query->orderBy('nama', 'asc')->get([
+            'id', 'nama', 'gelar_depan', 'gelar_blk', 'no_lisensi', 'no_hp', 'email',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Assign assessor to schedule
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function assignPenguji(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'id_asesor' => 'required|integer|exists:asesor,id',
+        ], [
+            'id_asesor.required' => 'Penguji wajib dipilih',
+            'id_asesor.exists' => 'Penguji tidak valid',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $exists = \DB::table('jadwal_asesor')
+            ->where('id_jadwal', $id)
+            ->where('id_asesor', $request->id_asesor)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Penguji sudah ditugaskan pada jadwal ini',
+            ], 400);
+        }
+
+        \DB::table('jadwal_asesor')->insert([
+            'id_jadwal' => $id,
+            'id_asesor' => $request->id_asesor,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Penguji berhasil ditugaskan ke jadwal',
+        ]);
+    }
+
+    /**
+     * Unassign assessor from schedule
+     *
+     * @param int $id
+     * @param int $idAsesor
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function unassignPenguji($id, $idAsesor)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $deleted = \DB::table('jadwal_asesor')
+            ->where('id_jadwal', $id)
+            ->where('id_asesor', $idAsesor)
+            ->delete();
+
+        if (!$deleted) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Penguji tidak ditemukan pada jadwal ini',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Penguji berhasil dilepas dari jadwal',
+        ]);
     }
 }

@@ -640,4 +640,109 @@ class AsesiBaruController extends Controller
             'message' => 'SMS masuk antrean pengiriman',
         ]);
     }
+
+    /**
+     * POST /api/v1/admin/asesi-baru/{id}/plot-jadwal
+     * Body: { id_jadwal: number, id_skemakkni: number }
+     */
+    public function plotJadwal(Request $request, $id): JsonResponse
+    {
+        $asesi = Asesi::find($id);
+        if (!$asesi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'id_jadwal' => 'required|integer|exists:jadwal_asesmen,id',
+            'id_skemakkni' => 'required|integer',
+        ], [
+            'id_jadwal.required' => 'Jadwal wajib dipilih',
+            'id_jadwal.exists' => 'Jadwal tidak valid',
+            'id_skemakkni.required' => 'Skema sertifikasi wajib diisi',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $pendaftaran = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
+            ->where('id_skemakkni', $request->id_skemakkni)
+            ->first();
+
+        if (!$pendaftaran) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pendaftaran skema peserta tidak ditemukan',
+            ], 404);
+        }
+
+        // Cek kapasitas jadwal
+        $jadwal = \App\Models\JadwalAsesmen::find($request->id_jadwal);
+        if ($jadwal && $jadwal->kapasitas > 0) {
+            $currentCount = AsesiAsesmen::where('id_jadwal', $jadwal->id)->count();
+            if ($currentCount >= $jadwal->kapasitas) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Kapasitas jadwal sudah penuh ({$jadwal->kapasitas} peserta)",
+                ], 400);
+            }
+        }
+
+        $pendaftaran->id_jadwal = $request->id_jadwal;
+        $pendaftaran->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Peserta berhasil ditambahkan ke jadwal',
+        ]);
+    }
+
+    /**
+     * DELETE /api/v1/admin/asesi-baru/{id}/plot-jadwal
+     * Body: { id_skemakkni: number }
+     */
+    public function unassignJadwal(Request $request, $id): JsonResponse
+    {
+        $asesi = Asesi::find($id);
+        if (!$asesi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $idSkemakkni = $request->input('id_skemakkni') ?? $request->json('id_skemakkni');
+        if (!$idSkemakkni) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Skema sertifikasi wajib diisi',
+            ], 422);
+        }
+
+        $pendaftaran = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
+            ->where('id_skemakkni', $idSkemakkni)
+            ->first();
+
+        if (!$pendaftaran) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pendaftaran skema peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $pendaftaran->id_jadwal = null;
+        $pendaftaran->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Peserta berhasil dilepas dari jadwal',
+        ]);
+    }
 }

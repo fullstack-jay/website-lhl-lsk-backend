@@ -523,6 +523,13 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{id}/status', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateStatus']);
     });
 
+    // Verifikator TUK routes
+    Route::prefix('tuk/verifikator')->group(function () {
+        Route::get('/{jadwalId?}', [\App\Http\Controllers\Api\VerifikatorTukController::class, 'getVerifikatorData']);
+        Route::post('/{jadwalId}', [\App\Http\Controllers\Api\VerifikatorTukController::class, 'assignVerifikator']);
+        Route::delete('/{jadwalId}/{asesorId}', [\App\Http\Controllers\Api\VerifikatorTukController::class, 'unassignVerifikator']);
+    });
+
     // TUK routes (admin only)
     Route::prefix('tuk')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\TukController::class, 'index']);

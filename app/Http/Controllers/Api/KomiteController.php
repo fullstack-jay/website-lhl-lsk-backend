@@ -451,7 +451,8 @@ class KomiteController extends Controller
             ], 404);
         }
 
-        $plainPassword = (string) random_int(100000, 999999);
+        // Reset password otomatis ke default Kbl12345
+        $plainPassword = self::DEFAULT_PASSWORD;
 
         DB::beginTransaction();
         try {

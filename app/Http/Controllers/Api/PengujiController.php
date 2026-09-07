@@ -556,8 +556,8 @@ class PengujiController extends Controller
             ], 404);
         }
 
-        // Generate password baru 6 digit angka (idem rand(100000,999999))
-        $plainPassword = (string) random_int(100000, 999999);
+        // Reset password otomatis ke default Kbl12345
+        $plainPassword = self::DEFAULT_PASSWORD;
 
         DB::beginTransaction();
         try {

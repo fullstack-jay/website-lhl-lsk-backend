@@ -567,6 +567,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi']);
         Route::put('/{noPendaftaran}/verifikasi-dokumen', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasiDokumen']);
         Route::put('/{noPendaftaran}/validasi-pembayaran', [\App\Http\Controllers\Api\AsesiController::class, 'updateValidasiPembayaran']);
+        Route::put('/{noPendaftaran}/kwitansi-signature', [\App\Http\Controllers\Api\AsesiController::class, 'updateKwitansiSignature']);
     });
 
     // Calon Peserta Baru (asesibaru) routes — sesuai docs/BACKEND_CALONPESERTABARU.md

@@ -1215,6 +1215,60 @@ class AsesiController extends Controller
         }
     }
 
+    /**
+     * Simpan Tanda Tangan Kwitansi Pembayaran (Admin)
+     * PUT /api/v1/admin/peserta/{noPendaftaran}/kwitansi-signature
+     */
+    public function updateKwitansiSignature(Request $request, $noPendaftaran)
+    {
+        $asesi = Asesi::where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('id', $noPendaftaran)
+            ->first();
+
+        if (!$asesi) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Peserta tidak ditemukan',
+            ], 404);
+        }
+
+        $signature = $request->input('signature') ?: $request->input('tanda_tangan');
+        if (!$signature) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanda tangan wajib diisi',
+            ], 422);
+        }
+
+        $namaAdmin = $request->input('nama_admin') ?: (auth()->user()?->nama_lengkap ?? 'Administrator LSK');
+
+        $verif = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $verif['ttd_kwitansi'] = $signature;
+        if (empty($verif['ttd_admin'])) {
+            $verif['ttd_admin'] = $signature;
+        }
+        $verif['tgl_ttd_kwitansi'] = now()->toISOString();
+        if (empty($verif['nama_admin'])) {
+            $verif['nama_admin'] = $namaAdmin;
+        }
+
+        $asesi->verifikasi_dokumen = $verif;
+        $asesi->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tanda tangan kwitansi berhasil disimpan',
+            'data' => [
+                'ttd_kwitansi' => $signature,
+                'nama_admin' => $namaAdmin,
+                'tgl_ttd_kwitansi' => $verif['tgl_ttd_kwitansi'],
+            ],
+        ]);
+    }
+
     public function statistics()
     {
         // Tab statistics

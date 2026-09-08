@@ -70,6 +70,21 @@ class KonfirmasiPembayaranController extends Controller
             ];
         });
 
+        // Data pendukung tanda tangan & kwitansi
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $firstPendaftaran = $pendaftaran->first();
+        $skemaFirst = null;
+        if ($firstPendaftaran) {
+            $skemaFirst = DB::table('skema_kkni')->where('id', $firstPendaftaran->id_skemakkni)->first(['kode_skema', 'judul']);
+        }
+
+        $ttdAdmin = $verifDok['ttd_kwitansi'] ?? $verifDok['ttd_admin'] ?? null;
+        $namaAdmin = $verifDok['nama_admin'] ?? 'Administrator LSK';
+        $tglTtd = $verifDok['tgl_ttd_kwitansi'] ?? $verifDok['tgl_persetujuan_admin'] ?? null;
+
         // Riwayat konfirmasi (CQ #1)
         $riwayat = DB::table('asesi_pembayaran')
             ->where('id_asesi', $asesi->no_pendaftaran)
@@ -91,6 +106,10 @@ class KonfirmasiPembayaranController extends Controller
                 'status' => $p->status,                 // P | V
                 'status_label' => $p->status === 'P' ? 'Menunggu Validasi' : 'Telah Divalidasi',
                 'waktu' => $p->waktu,
+                'can_view_kwitansi' => $p->status === 'V',
+                'ttd_admin' => $ttdAdmin,
+                'nama_admin' => $namaAdmin,
+                'tgl_ttd' => $tglTtd,
             ]);
 
         return response()->json([
@@ -99,6 +118,14 @@ class KonfirmasiPembayaranController extends Controller
                 'peserta' => [
                     'nama' => $asesi->nama,
                     'no_pendaftaran' => $asesi->no_pendaftaran,
+                    'no_ktp' => $asesi->no_ktp,
+                    'skema_nama' => $skemaFirst ? $skemaFirst->judul : 'Anggota Tim Penyusun Amdal (ATPA)',
+                    'skema_kode' => $skemaFirst ? $skemaFirst->kode_skema : 'SKM/1983/00013/2/2021/1',
+                    'biaya' => $firstPendaftaran?->biaya ? (int) $firstPendaftaran->biaya : 6500000,
+                    'biaya_asesmen_status' => $firstPendaftaran?->biaya_asesmen ?? 'L',
+                    'ttd_admin' => $ttdAdmin,
+                    'nama_admin' => $namaAdmin,
+                    'tgl_ttd_kwitansi' => $tglTtd,
                 ],
                 // KONDISI 1: belum daftar skema
                 'belum_daftar' => $pendaftaran->isEmpty(),

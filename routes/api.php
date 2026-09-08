@@ -285,6 +285,18 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::post('/konfirmasi-pembayaran', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'store']);
     Route::delete('/konfirmasi-pembayaran/{id}', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'destroy']);
 
+    // Kewajiban Peserta (pemeliharaan/evaluasi/logbook/notifikasi) — docs/ALUR_LOGIC_KEWAJIBAN_PESERTA.md
+    Route::get('/kewajiban', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'index']);
+    Route::get('/kewajiban/pemeliharaan', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'pemeliharaan']);
+    Route::post('/kewajiban/pemeliharaan/{tahun}', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'submitPemeliharaan']);
+    Route::post('/kewajiban/pemeliharaan/{tahun}/pkb', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'storePkb']);
+    Route::get('/kewajiban/evaluasi', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'evaluasi']);
+    Route::post('/kewajiban/evaluasi/{tahunKe}', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'submitEvaluasi']);
+    Route::get('/kewajiban/logbook', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'logbook']);
+    Route::post('/kewajiban/logbook', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'storeLogbook']);
+    Route::get('/kewajiban/notifikasi', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'notifikasi']);
+    Route::post('/kewajiban/notifikasi/tandai-dibaca', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'tandaiDibaca']);
+
     // Skema Sertifikasi — Portal Peserta (docs/BACKEND_PESERTA_SKEMA_SERTIFIKASI.md)
     Route::get('/skema', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'index']);
     Route::get('/skema/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'show']);

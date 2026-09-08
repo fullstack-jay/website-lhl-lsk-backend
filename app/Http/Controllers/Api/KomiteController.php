@@ -460,14 +460,19 @@ class KomiteController extends Controller
             $komite->password = $hashed;
             $komite->save();
 
-            $linkedUser = User::where('username', $komite->no_ktp)->where('level', 'komite-teknis')->first();
-            if (!$linkedUser) {
-                $linkedUser = User::where('no_ktp', $komite->no_ktp)->where('level', 'komite-teknis')->first();
-            }
-            if ($linkedUser) {
-                $linkedUser->password = $hashed;
-                $linkedUser->save();
-            }
+             = ->no_ktp ?: (->email ?: 'komite_' . ->id);
+            User::updateOrCreate(
+                ['username' => ],
+                [
+                    'nama_lengkap' => ->nama ?: 'Komite Teknis',
+                    'email'        => ->email ?: ( . '@example.com'),
+                    'no_ktp'       => ->no_ktp,
+                    'no_telp'      => ->no_hp,
+                    'password'     => ,
+                    'level'        => 'komite-teknis',
+                    'blokir'       => 'N',
+                ]
+            );
 
             $channelLog = [];
             if ($komite->email) {

@@ -33,5 +33,9 @@ Route::prefix('auth')->group(function () {
 
         // Penguji protected routes
         Route::get('penguji/me', [Auth\PengujiAuthController::class, 'me']);
+
+        // Jadwal Uji Kompetensi penguji — docs/BACKEND_PENGUJI_JADWAL_UJI_KOMPETENSI.md
+        Route::get('penguji/jadwal-uji', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'index']);
+        Route::get('penguji/jadwal-uji/{idJadwal}', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'show']);
     });
 });

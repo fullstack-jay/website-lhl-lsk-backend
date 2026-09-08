@@ -42,13 +42,46 @@ class PengujiAuthController extends ApiController
         $identifier = $request->input('identifier');
         $password = $request->input('password');
 
-        // Find user by no_ktp/username OR no_hp OR no_induk (3 opsi identifier)
+        // 1. Cari user di tabel users terlebih dahulu
         $user = User::where(function ($query) use ($identifier) {
-            $query->where('username', $identifier)   // username = no_ktp
+            $query->where('username', $identifier)
                   ->orWhere('no_ktp', $identifier)
-                  ->orWhere('no_telp', $identifier)  // no_hp
-                  ->orWhere('no_induk', $identifier);// No. Register Penguji
-        })->active()->first();
+                  ->orWhere('no_telp', $identifier)
+                  ->orWhere('no_induk', $identifier)
+                  ->orWhere('email', $identifier);
+        })->where('level', 'penguji')->first();
+
+        // 2. Jika belum ada di tabel users, cari di tabel asesor dan auto-sinkronkan
+        if (!$user) {
+            $asesor = \App\Models\Asesor::where(function ($query) use ($identifier) {
+                $query->where('no_ktp', $identifier)
+                      ->orWhere('no_hp', $identifier)
+                      ->orWhere('no_induk', $identifier)
+                      ->orWhere('email', $identifier);
+            })->first();
+
+            if ($asesor) {
+                $username = $asesor->no_ktp ?: ($asesor->no_induk ?: $identifier);
+                $user = User::updateOrCreate(
+                    ['username' => $username],
+                    [
+                        'password' => $asesor->password ?: Hash::make('Kbl12345'),
+                        'nama_lengkap' => $asesor->nama,
+                        'gelar_depan' => $asesor->gelar_depan,
+                        'gelar_blk' => $asesor->gelar_blk,
+                        'tmp_lahir' => $asesor->tmp_lahir,
+                        'tgl_lahir' => $asesor->tgl_lahir,
+                        'no_induk' => $asesor->no_induk,
+                        'no_ktp' => $asesor->no_ktp,
+                        'pendidikan_terakhir' => $asesor->pendidikan_terakhir,
+                        'email' => $asesor->email,
+                        'no_telp' => $asesor->no_hp,
+                        'level' => 'penguji',
+                        'blokir' => ($asesor->aktif ?? true) ? 'N' : 'Y',
+                    ]
+                );
+            }
+        }
 
         // Check if user exists
         if (!$user) {
@@ -66,12 +99,30 @@ class PengujiAuthController extends ApiController
             ], 403);
         }
 
-        // Check password
-        if (!Hash::check($password, $user->password)) {
+        // Check if user is blocked
+        if ($user->blokir === 'Y') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Penguji Anda dinonaktifkan / diblokir. Silakan hubungi Administrator.',
+            ], 403);
+        }
+
+        // Check password (supports Bcrypt and legacy double-MD5)
+        $passwordValid = Hash::check($password, $user->password) ||
+                         md5(md5($password)) === $user->password ||
+                         md5($password) === $user->password;
+
+        if (!$passwordValid) {
             return response()->json([
                 'success' => false,
                 'message' => 'Password salah',
             ], 401);
+        }
+
+        // Auto-upgrade legacy password to Bcrypt if needed
+        if (!Hash::check($password, $user->password)) {
+            $user->password = Hash::make($password);
+            $user->save();
         }
 
         // Create token for API authentication

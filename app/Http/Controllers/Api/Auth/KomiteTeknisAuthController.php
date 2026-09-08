@@ -42,13 +42,46 @@ class KomiteTeknisAuthController extends ApiController
         $identifier = $request->input('identifier');
         $password = $request->input('password');
 
-        // 3 opsi identifier (idem native cek_login komite)
+        // 1. Cari user di tabel users terlebih dahulu
         $user = User::where(function ($query) use ($identifier) {
             $query->where('username', $identifier)     // username = no_ktp
                   ->orWhere('no_ktp', $identifier)
                   ->orWhere('no_telp', $identifier)    // no_hp
-                  ->orWhere('no_induk', $identifier);  // No. Register
-        })->active()->first();
+                  ->orWhere('no_induk', $identifier)   // No. Register
+                  ->orWhere('email', $identifier);
+        })->where('level', 'komite-teknis')->first();
+
+        // 2. Jika belum ada di tabel users, cari di tabel komite dan auto-sinkronkan
+        if (!$user) {
+            $komite = \App\Models\Komite::where(function ($query) use ($identifier) {
+                $query->where('no_ktp', $identifier)
+                      ->orWhere('no_hp', $identifier)
+                      ->orWhere('no_induk', $identifier)
+                      ->orWhere('email', $identifier);
+            })->first();
+
+            if ($komite) {
+                $username = $komite->no_ktp ?: ($komite->no_induk ?: $identifier);
+                $user = User::updateOrCreate(
+                    ['username' => $username],
+                    [
+                        'password' => $komite->password ?: Hash::make('Kbl12345'),
+                        'nama_lengkap' => $komite->nama,
+                        'gelar_depan' => $komite->gelar_depan,
+                        'gelar_blk' => $komite->gelar_blk,
+                        'tmp_lahir' => $komite->tmp_lahir,
+                        'tgl_lahir' => $komite->tgl_lahir,
+                        'no_induk' => $komite->no_induk,
+                        'no_ktp' => $komite->no_ktp,
+                        'pendidikan_terakhir' => $komite->pendidikan_terakhir,
+                        'email' => $komite->email,
+                        'no_telp' => $komite->no_hp,
+                        'level' => 'komite-teknis',
+                        'blokir' => ($komite->aktif === 'N') ? 'Y' : 'N',
+                    ]
+                );
+            }
+        }
 
         // Check if user exists
         if (!$user) {
@@ -66,12 +99,30 @@ class KomiteTeknisAuthController extends ApiController
             ], 403);
         }
 
-        // Check password
-        if (!Hash::check($password, $user->password)) {
+        // Check if user is blocked
+        if ($user->blokir === 'Y') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akun Komite Teknis Anda dinonaktifkan / diblokir. Silakan hubungi Administrator.',
+            ], 403);
+        }
+
+        // Check password (supports Bcrypt and legacy double-MD5)
+        $passwordValid = Hash::check($password, $user->password) ||
+                         md5(md5($password)) === $user->password ||
+                         md5($password) === $user->password;
+
+        if (!$passwordValid) {
             return response()->json([
                 'success' => false,
                 'message' => 'Password salah',
             ], 401);
+        }
+
+        // Auto-upgrade legacy password to Bcrypt if needed
+        if (!Hash::check($password, $user->password)) {
+            $user->password = Hash::make($password);
+            $user->save();
         }
 
         // Create token for API authentication

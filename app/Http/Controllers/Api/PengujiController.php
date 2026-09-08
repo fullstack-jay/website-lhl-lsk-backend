@@ -566,14 +566,25 @@ class PengujiController extends Controller
             $asesor->save();
 
             // Sinkronkan hash ke akun users (login API memakai tabel users)
-            $linkedUser = User::where('username', $asesor->no_ktp)->where('level', 'penguji')->first();
-            if (!$linkedUser) {
-                $linkedUser = User::where('no_ktp', $asesor->no_ktp)->where('level', 'penguji')->first();
-            }
-            if ($linkedUser) {
-                $linkedUser->password = $hashed;
-                $linkedUser->save();
-            }
+            $username = $asesor->no_ktp ?: ($asesor->no_induk ?: $asesor->id);
+            $linkedUser = User::updateOrCreate(
+                ['username' => $username],
+                [
+                    'password' => $hashed,
+                    'nama_lengkap' => $asesor->nama,
+                    'gelar_depan' => $asesor->gelar_depan,
+                    'gelar_blk' => $asesor->gelar_blk,
+                    'tmp_lahir' => $asesor->tmp_lahir,
+                    'tgl_lahir' => $asesor->tgl_lahir,
+                    'no_induk' => $asesor->no_induk,
+                    'no_ktp' => $asesor->no_ktp,
+                    'pendidikan_terakhir' => $asesor->pendidikan_terakhir,
+                    'email' => $asesor->email,
+                    'no_telp' => $asesor->no_hp,
+                    'level' => 'penguji',
+                    'blokir' => 'N',
+                ]
+            );
 
             // Log notifikasi 2 kanal (dev-safe). Produksi: Mail facade + SMS gateway.
             $channelLog = [];

@@ -59,6 +59,9 @@ Route::prefix('pengaduan')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    // Dashboard Admin — docs/ALUR_ADMIN_DASHBOARD.md
+    Route::get('/dashboard', [\App\Http\Controllers\Api\AdminDashboardController::class, 'index']);
+
     // Pengaduan routes
     Route::prefix('pengaduan')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\PengaduanController::class, 'index']);

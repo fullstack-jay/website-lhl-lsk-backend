@@ -38,6 +38,11 @@ Route::prefix('auth')->group(function () {
         Route::get('penguji/jadwal-uji', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'index']);
         Route::get('penguji/jadwal-uji/{idJadwal}', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'show']);
 
+        // Jadwal Verifikasi TUK (verifikator) — docs/BACKEND_JADWAL_VERIFIKASI_TUK.md
+        Route::get('penguji/verifikasi-tuk', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'index']);
+        Route::get('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'ceklis']);
+        Route::post('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'simpanCeklis']);
+
         // Form Penilaian Asesi (4 Instrumen Uji) — docs/BACKEND_FORM_PENILAIAN.md
         Route::get('penguji/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
         Route::get('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);

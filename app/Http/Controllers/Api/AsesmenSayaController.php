@@ -249,6 +249,42 @@ class AsesmenSayaController extends Controller
             ];
         }
 
+        // ── Data Pembayaran Remedial (jika ada) ──
+        $remedialPembayaran = DB::table('asesi_pembayaran')
+            ->where(function ($q) use ($m, $asesi) {
+                $q->where('id_asesi', $m->id_asesi)
+                  ->orWhere('id_asesi', (string) $m->id);
+                if ($asesi) {
+                    $q->orWhere('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                }
+            })
+            ->where('nominal', 1500000)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        $remedialData = null;
+        if ($remedialPembayaran) {
+            $statusLabel = match ($remedialPembayaran->status) {
+                'V' => 'Telah Divalidasi',
+                'D' => 'Ditolak',
+                default => 'Menunggu Validasi',
+            };
+            $remedialData = [
+                'id' => (int) $remedialPembayaran->id,
+                'status' => $remedialPembayaran->status,
+                'status_label' => $statusLabel,
+                'catatan_penolakan' => $remedialPembayaran->catatan_penolakan ?? null,
+                'is_verified' => $remedialPembayaran->status === 'V',
+                'is_rejected' => $remedialPembayaran->status === 'D',
+                'nominal' => (int) $remedialPembayaran->nominal,
+                'nominal_formatted' => number_format((float) $remedialPembayaran->nominal, 0, ',', '.'),
+                'tgl_bayar' => $remedialPembayaran->tgl_bayar,
+                'file' => $remedialPembayaran->file,
+                'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
+            ];
+        }
+
         // ── STATE MACHINE: status × (biaya_asesmen | status_asesmen) ──
         [$pesan, $warna, $aksi] = $this->deriveStatusMatriks(
             $m->status,
@@ -278,6 +314,7 @@ class AsesmenSayaController extends Controller
             'dokumen_lengkap' => empty($dokumenKurang),
             'penguji_penilai' => $pengujiPenilai,
             'hasil_ujian' => $hasilUjian,
+            'remedial' => $remedialData,
         ];
     }
 

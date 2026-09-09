@@ -1164,8 +1164,9 @@ class AsesiController extends Controller
             ], 404);
         }
 
-        $status = $request->input('status', 'V'); // 'V' untuk validasi/lunas, 'P' untuk batalkan validasi
+        $status = $request->input('status', 'V'); // 'V' untuk lunas, 'P' untuk pending/batal, 'D' untuk ditolak
         $idPembayaran = $request->input('id_pembayaran');
+        $catatan = $request->input('catatan');
 
         \DB::beginTransaction();
         try {
@@ -1183,13 +1184,19 @@ class AsesiController extends Controller
 
             $pembayaran = $pembayaranQuery->first();
             if ($pembayaran) {
+                $updateData = ['status' => $status];
+                if ($status === 'D') {
+                    $updateData['catatan_penolakan'] = $catatan ?: 'Bukti pembayaran tidak sesuai atau tidak valid.';
+                } elseif ($status === 'V' || $status === 'P') {
+                    $updateData['catatan_penolakan'] = null;
+                }
                 \DB::table('asesi_pembayaran')
                     ->where('id', $pembayaran->id)
-                    ->update(['status' => $status]);
+                    ->update($updateData);
             }
 
-            // Update asesi_asesmen: 'L' jika 'V', atau 'K' jika 'P' (atau 'P' jika belum ada pembayaran)
-            $newBiayaAsesmen = $status === 'V' ? 'L' : ($pembayaran ? 'K' : 'P');
+            // Update asesi_asesmen: 'L' jika 'V', atau 'K' jika 'P', atau 'P' jika 'D' (ditolak)
+            $newBiayaAsesmen = $status === 'V' ? 'L' : ($status === 'D' ? 'P' : ($pembayaran ? 'K' : 'P'));
             \DB::table('asesi_asesmen')
                 ->where(function ($q) use ($asesi) {
                     $q->where('id_asesi', $asesi->no_pendaftaran)
@@ -1199,13 +1206,20 @@ class AsesiController extends Controller
 
             \DB::commit();
 
+            $message = match ($status) {
+                'V' => 'Pembayaran berhasil divalidasi (Lunas).',
+                'D' => 'Pembayaran berhasil ditolak: ' . ($catatan ?: 'Bukti transfer tidak sesuai.'),
+                default => 'Validasi pembayaran dibatalkan (Menunggu Validasi).',
+            };
+
             return response()->json([
                 'success' => true,
-                'message' => $status === 'V' ? 'Pembayaran berhasil divalidasi (Lunas).' : 'Validasi pembayaran dibatalkan.',
+                'message' => $message,
                 'data' => [
                     'status' => $status,
                     'biaya_asesmen' => $newBiayaAsesmen,
                     'pembayaran_id' => $pembayaran ? $pembayaran->id : null,
+                    'catatan_penolakan' => $status === 'D' ? ($catatan ?: 'Bukti transfer tidak sesuai.') : null,
                 ]
             ]);
         } catch (\Exception $e) {
@@ -1645,18 +1659,37 @@ class AsesiController extends Controller
             }
         }
 
+        $statusRemedial = 'belum_daftar';
+        if ($remedialPembayaran) {
+            if ($remedialPembayaran->status === 'V') {
+                $statusRemedial = 'lunas';
+            } elseif ($remedialPembayaran->status === 'D') {
+                $statusRemedial = 'ditolak';
+            } else {
+                $statusRemedial = 'menunggu_verifikasi';
+            }
+        }
+
+        $statusRemedialLabel = match ($remedialPembayaran?->status) {
+            'V' => 'Telah Divalidasi',
+            'D' => 'Ditolak',
+            default => 'Menunggu Validasi',
+        };
+
         $data['remedial'] = $remedialPembayaran ? [
             'id' => $remedialPembayaran->id,
             'nominal' => (int) $remedialPembayaran->nominal,
             'nominal_formatted' => number_format((float) $remedialPembayaran->nominal, 0, ',', '.'),
             'status' => $remedialPembayaran->status,
-            'status_label' => $remedialPembayaran->status === 'V' ? 'Lunas' : 'Menunggu Validasi',
+            'status_label' => $statusRemedialLabel,
+            'catatan_penolakan' => $remedialPembayaran->catatan_penolakan ?? null,
             'is_verified' => $remedialPembayaran->status === 'V',
+            'is_rejected' => $remedialPembayaran->status === 'D',
             'tgl_bayar' => $remedialPembayaran->tgl_bayar,
             'file' => $remedialPembayaran->file,
             'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
         ] : null;
-        $data['status_remedial'] = $remedialPembayaran ? ($remedialPembayaran->status === 'V' ? 'lunas' : 'menunggu_verifikasi') : 'belum_daftar';
+        $data['status_remedial'] = $statusRemedial;
 
         return $data;
     }
@@ -1894,7 +1927,8 @@ class AsesiController extends Controller
                     'file' => $p->file,
                     'bukti_url' => !empty($p->file) ? asset('foto_asesibayar/' . $p->file) : null,
                     'status' => $p->status,
-                    'status_label' => $p->status === 'V' ? 'Telah Divalidasi' : 'Menunggu Validasi',
+                    'status_label' => $p->status === 'V' ? 'Telah Divalidasi' : ($p->status === 'D' ? 'Ditolak' : 'Menunggu Validasi'),
+                    'catatan_penolakan' => $p->catatan_penolakan ?? null,
                     'waktu' => $p->waktu,
                 ];
             });

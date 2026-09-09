@@ -26,6 +26,8 @@ class StorePenilaianAsesiRequest extends FormRequest
             'rubrik_detail.pengalaman_proyek' => 'nullable|numeric',
             'rubrik_detail.pendidikan' => 'nullable|numeric',
             'rubrik_detail.sertifikasi_pelatihan' => 'nullable|numeric',
+            'rubrik_detail.unit_pt' => 'nullable|array',
+            'rubrik_detail.unit_pw' => 'nullable|array',
         ];
     }
 

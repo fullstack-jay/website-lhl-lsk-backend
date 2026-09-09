@@ -1592,14 +1592,44 @@ class AsesiController extends Controller
             $skemaQuery->where('status_asesmen', 'BK');
         }
 
+        // Hitung dokumen pokok & tambahan dari tabel asesi
+        $dokumenWajib = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
+        $countWajib = 0;
+        $countWajibVerif = 0;
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        foreach ($dokumenWajib as $f) {
+            if (!empty($asesi->{$f})) {
+                $countWajib++;
+                if (($verifDok[$f] ?? null) === 'terverifikasi' || $asesi->verifikasi === 'V') {
+                    $countWajibVerif++;
+                }
+            }
+        }
+
+        $dokumenTambahan = ['sertifikat_atpa_ktpa', 'sertifikat_kompetensi_lain', 'cv', 'ktp', 'foto', 'form_pendaftaran'];
+        $countTambahan = 0;
+        foreach ($dokumenTambahan as $f) {
+            if (!empty($asesi->{$f})) $countTambahan++;
+        }
+
         // Load skema relationship with pivot data
         $skemaList = $skemaQuery
             ->with(['skema', 'jadwal', 'asesor'])
             ->get()
-            ->map(function ($asesmen) use ($asesi) {
-                $jumlahDokumen = AsesiDoc::where('id_asesi', $asesi->no_pendaftaran)
-                    ->where('id_skemakkni', $asesmen->id_skemakkni)
-                    ->count();
+            ->map(function ($asesmen) use ($asesi, $countWajib, $countTambahan, $countWajibVerif) {
+                $countAsesiDoc = AsesiDoc::where(function ($q) use ($asesi) {
+                    $q->where('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                })
+                ->where('id_skemakkni', $asesmen->id_skemakkni)
+                ->count();
+
+                $totalDokumen = $countWajib + $countTambahan + $countAsesiDoc;
+                $isLengkap = ($countWajib >= 4) || ($asesi->verifikasi === 'V') || ($totalDokumen >= 4);
+                $isTerverifikasi = ($asesi->verifikasi === 'V') || ($countWajibVerif >= 4);
 
                 return [
                     'id' => $asesmen->id,
@@ -1620,8 +1650,10 @@ class AsesiController extends Controller
                     'masa_berlaku' => $asesmen->masa_berlaku ? $asesmen->masa_berlaku->format('Y-m-d') : null,
                     'ploting_asesor' => !empty($asesmen->id_asesor) && $asesmen->id_asesor != '0',
                     'sertifikat_ada' => !empty($asesmen->no_lisensi) || !empty($asesmen->no_serisertifikat),
-                    'jumlah_dokumen' => $jumlahDokumen,
-                    'dokumen_lengkap' => $jumlahDokumen > 0,
+                    'jumlah_dokumen' => $totalDokumen,
+                    'dokumen_lengkap' => $isLengkap,
+                    'dokumen_terverifikasi' => $isTerverifikasi,
+                    'jumlah_dokumen_terverifikasi' => $countWajibVerif,
                 ];
             });
 
@@ -1695,6 +1727,40 @@ class AsesiController extends Controller
             'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
         ] : null;
         $data['status_remedial'] = $statusRemedial;
+
+        // Ambil data penilaian_asesi (hasil uji instrumen VP, PT, DPSK, PW)
+        $penilaianRecord = \DB::table('penilaian_asesi')
+            ->where('no_pendaftaran', $asesi->no_pendaftaran)
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($penilaianRecord) {
+            $rubrikDetail = is_string($penilaianRecord->rubrik_detail)
+                ? json_decode($penilaianRecord->rubrik_detail, true)
+                : (is_array($penilaianRecord->rubrik_detail) ? $penilaianRecord->rubrik_detail : []);
+
+            $data['penilaian'] = [
+                'id' => $penilaianRecord->id,
+                'id_jadwal' => $penilaianRecord->id_jadwal,
+                'nilai_vp' => (float) $penilaianRecord->nilai_vp,
+                'nilai_pt' => (float) $penilaianRecord->nilai_pt,
+                'nilai_dpsk' => (float) $penilaianRecord->nilai_dpsk,
+                'nilai_pw' => (float) $penilaianRecord->nilai_pw,
+                'skor_vp' => (float) $penilaianRecord->skor_vp,
+                'skor_pt' => (float) $penilaianRecord->skor_pt,
+                'skor_dpsk' => (float) $penilaianRecord->skor_dpsk,
+                'skor_pw' => (float) $penilaianRecord->skor_pw,
+                'total_skor' => (float) $penilaianRecord->total_skor,
+                'rekomendasi' => $penilaianRecord->rekomendasi,
+                'catatan' => $penilaianRecord->catatan,
+                'tgl_penilaian' => $penilaianRecord->tgl_penilaian,
+                'unit_pt' => $rubrikDetail['unit_pt'] ?? null,
+                'unit_pw' => $rubrikDetail['unit_pw'] ?? null,
+                'rubrik_detail' => $rubrikDetail,
+            ];
+        } else {
+            $data['penilaian'] = null;
+        }
 
         return $data;
     }

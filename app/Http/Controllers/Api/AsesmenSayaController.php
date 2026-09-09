@@ -195,6 +195,60 @@ class AsesmenSayaController extends Controller
             }
         }
 
+        // ── Data Hasil Penilaian & Penguji Penilai (Hanya Penguji yang Menilai) ──
+        $penilaian = \App\Models\PenilaianAsesi::where('id_jadwal', $m->id_jadwal)
+            ->where(function ($q) use ($m) {
+                $q->where('id_asesmen', $m->id)
+                  ->orWhere('no_pendaftaran', $m->id_asesi);
+            })
+            ->first();
+
+        $pengujiPenilai = null;
+        $idPenilai = $penilaian ? $penilaian->id_asesor : $m->id_asesor;
+        if ($idPenilai) {
+            $asesorObj = \App\Models\Asesor::find($idPenilai);
+            if ($asesorObj) {
+                $front = $asesorObj->gelar_depan ? trim($asesorObj->gelar_depan) . ' ' : '';
+                $back = $asesorObj->gelar_blk ? ', ' . trim($asesorObj->gelar_blk) : '';
+                $pengujiPenilai = $front . $asesorObj->nama . $back;
+            }
+        }
+
+        $hasilUjian = null;
+        if ($penilaian) {
+            $tglStr = null;
+            if ($penilaian->tgl_penilaian) {
+                $tglStr = is_string($penilaian->tgl_penilaian)
+                    ? date('d F Y', strtotime($penilaian->tgl_penilaian))
+                    : $penilaian->tgl_penilaian->format('d F Y');
+            }
+            $hasilUjian = [
+                'sudah_dinilai' => true,
+                'nilai_akhir' => (float) $penilaian->total_skor,
+                'rekomendasi' => $penilaian->rekomendasi,
+                'rekomendasi_label' => $penilaian->rekomendasi === 'K' ? 'Kompeten' : 'Belum Kompeten',
+                'catatan' => $penilaian->catatan,
+                'tgl_penilaian' => $tglStr,
+                'nama_penguji' => $pengujiPenilai,
+            ];
+        } elseif ($m->status_asesmen === 'K' || $m->status_asesmen === 'BK') {
+            $tglStr = null;
+            if ($m->tgl_asesmen) {
+                $tglStr = is_string($m->tgl_asesmen)
+                    ? date('d F Y', strtotime($m->tgl_asesmen))
+                    : $m->tgl_asesmen->format('d F Y');
+            }
+            $hasilUjian = [
+                'sudah_dinilai' => true,
+                'nilai_akhir' => null,
+                'rekomendasi' => $m->status_asesmen,
+                'rekomendasi_label' => $m->status_asesmen === 'K' ? 'Kompeten' : 'Belum Kompeten',
+                'catatan' => $m->catatan_asesmen,
+                'tgl_penilaian' => $tglStr,
+                'nama_penguji' => $pengujiPenilai,
+            ];
+        }
+
         // ── STATE MACHINE: status × (biaya_asesmen | status_asesmen) ──
         [$pesan, $warna, $aksi] = $this->deriveStatusMatriks(
             $m->status,
@@ -222,6 +276,8 @@ class AsesmenSayaController extends Controller
             'aksi' => $aksi,              // tombol kontekstual (bisa null / multiple)
             'dokumen_kurang' => $dokumenKurang,           // akumulasi (fix bug native)
             'dokumen_lengkap' => empty($dokumenKurang),
+            'penguji_penilai' => $pengujiPenilai,
+            'hasil_ujian' => $hasilUjian,
         ];
     }
 

@@ -415,12 +415,9 @@ class AsesiController extends Controller
 
         $asesi = $query->paginate($perPage, ['*'], 'page', $page);
 
-        // Transform data based on tab
+        // Transform data based on tab - sertakan skema_list & data remedial untuk semua tab
         $data = collect($asesi->items())->map(function ($item) use ($tab) {
-            if (in_array($tab, ['kompeten', 'belum_kompeten'])) {
-                return $this->transformAsesiWithSkema($item, $tab);
-            }
-            return $this->transformAsesi($item);
+            return $this->transformAsesiWithSkema($item, $tab);
         });
 
         return response()->json([
@@ -1584,11 +1581,19 @@ class AsesiController extends Controller
         $data = $this->transformAsesi($asesi);
 
         // Get skema yang diikuti berdasarkan tab
-        $statusAsesmen = $tab === 'kompeten' ? 'K' : 'BK';
+        $skemaQuery = AsesiAsesmen::where(function ($q) use ($asesi) {
+            $q->where('id_asesi', $asesi->no_pendaftaran)
+              ->orWhere('id_asesi', (string) $asesi->id);
+        });
+
+        if ($tab === 'kompeten') {
+            $skemaQuery->where('status_asesmen', 'K');
+        } elseif ($tab === 'belum_kompeten') {
+            $skemaQuery->where('status_asesmen', 'BK');
+        }
 
         // Load skema relationship with pivot data
-        $skemaList = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
-            ->where('status_asesmen', $statusAsesmen)
+        $skemaList = $skemaQuery
             ->with(['skema', 'jadwal', 'asesor'])
             ->get()
             ->map(function ($asesmen) use ($asesi) {

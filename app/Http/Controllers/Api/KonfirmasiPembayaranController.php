@@ -282,6 +282,7 @@ class KonfirmasiPembayaranController extends Controller
             }
 
             // 2. Dup-check 8 field (anti double-submit, idem native)
+            // Hanya tolak jika ada pembayaran yang PERSIS sama dan masih berstatus 'P' (menunggu validasi) atau 'V' (sudah lunas)
             $exists = DB::table('asesi_pembayaran')
                 ->where('id_asesmen', $asesmen->id)
                 ->where('id_asesi', $asesi->no_pendaftaran)
@@ -291,13 +292,14 @@ class KonfirmasiPembayaranController extends Controller
                 ->where('tujuan_rek', $request->tujuan_rek)
                 ->where('nominal', $request->nominal)
                 ->whereDate('tgl_bayar', $request->tgl_bayar)
+                ->whereIn('status', ['P', 'V'])
                 ->exists();
 
             if ($exists) {
                 DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => 'Data telah Anda konfirmasi sebelumnya',
+                    'message' => 'Data telah Anda konfirmasi sebelumnya dan sedang menunggu validasi admin atau telah disetujui',
                 ], 409);
             }
 
@@ -313,21 +315,51 @@ class KonfirmasiPembayaranController extends Controller
                 $file->move($dest, $fileName);
             }
 
-            // 4. INSERT konfirmasi (status='P' = menunggu validasi admin)
-            $pembayaranId = DB::table('asesi_pembayaran')->insertGetId([
-                'id_asesmen' => $asesmen->id,
-                'id_asesi' => $asesi->no_pendaftaran,
-                'id_skemakkni' => $asesmen->id_skemakkni,   // derived dari asesi_asesmen
-                'metode_bayar' => $request->metode_bayar,
-                'jalur_bayar' => $request->jalur_bayar,
-                'tujuan_rek' => $request->tujuan_rek,
-                'nominal' => (int) $request->nominal,
-                'tgl_bayar' => $request->tgl_bayar,
-                'jam_bayar' => $request->jam_bayar,
-                'file' => $fileName,
-                'status' => 'P',
-                'waktu' => now(),
-            ]);
+            // 4. Cek apakah ada pembayaran sebelumnya yang Ditolak ('D') untuk asesmen ini (pengajuan ulang / perbaikan bukti)
+            $rejectedPayment = DB::table('asesi_pembayaran')
+                ->where('id_asesmen', $asesmen->id)
+                ->where('id_asesi', $asesi->no_pendaftaran)
+                ->where('status', 'D')
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if ($rejectedPayment) {
+                $updateData = [
+                    'metode_bayar' => $request->metode_bayar,
+                    'jalur_bayar' => $request->jalur_bayar,
+                    'tujuan_rek' => $request->tujuan_rek,
+                    'nominal' => (int) $request->nominal,
+                    'tgl_bayar' => $request->tgl_bayar,
+                    'jam_bayar' => $request->jam_bayar,
+                    'status' => 'P',
+                    'catatan_penolakan' => null,
+                    'waktu' => now(),
+                ];
+                if ($fileName) {
+                    $updateData['file'] = $fileName;
+                }
+                DB::table('asesi_pembayaran')
+                    ->where('id', $rejectedPayment->id)
+                    ->update($updateData);
+                $pembayaranId = $rejectedPayment->id;
+            } else {
+                // INSERT konfirmasi baru (status='P' = menunggu validasi admin)
+                $pembayaranId = DB::table('asesi_pembayaran')->insertGetId([
+                    'id_asesmen' => $asesmen->id,
+                    'id_asesi' => $asesi->no_pendaftaran,
+                    'id_skemakkni' => $asesmen->id_skemakkni,   // derived dari asesi_asesmen
+                    'metode_bayar' => $request->metode_bayar,
+                    'jalur_bayar' => $request->jalur_bayar,
+                    'tujuan_rek' => $request->tujuan_rek,
+                    'nominal' => (int) $request->nominal,
+                    'tgl_bayar' => $request->tgl_bayar,
+                    'jam_bayar' => $request->jam_bayar,
+                    'file' => $fileName,
+                    'status' => 'P',
+                    'catatan_penolakan' => null,
+                    'waktu' => now(),
+                ]);
+            }
 
             // 5. ⭐ PIPELINE MAJU: biaya_asesmen 'P' → 'K'
             $asesmen->biaya_asesmen = 'K';

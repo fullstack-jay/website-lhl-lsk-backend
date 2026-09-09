@@ -37,5 +37,10 @@ Route::prefix('auth')->group(function () {
         // Jadwal Uji Kompetensi penguji — docs/BACKEND_PENGUJI_JADWAL_UJI_KOMPETENSI.md
         Route::get('penguji/jadwal-uji', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'index']);
         Route::get('penguji/jadwal-uji/{idJadwal}', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'show']);
+
+        // Form Penilaian Asesi (4 Instrumen Uji) — docs/BACKEND_FORM_PENILAIAN.md
+        Route::get('penguji/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
+        Route::get('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);
+        Route::post('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'store']);
     });
 });

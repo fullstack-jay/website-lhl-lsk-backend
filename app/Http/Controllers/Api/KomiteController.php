@@ -460,15 +460,15 @@ class KomiteController extends Controller
             $komite->password = $hashed;
             $komite->save();
 
-             = ->no_ktp ?: (->email ?: 'komite_' . ->id);
+            $username = $komite->no_ktp ?: ($komite->email ?: 'komite_' . $komite->id);
             User::updateOrCreate(
-                ['username' => ],
+                ['username' => $username],
                 [
-                    'nama_lengkap' => ->nama ?: 'Komite Teknis',
-                    'email'        => ->email ?: ( . '@example.com'),
-                    'no_ktp'       => ->no_ktp,
-                    'no_telp'      => ->no_hp,
-                    'password'     => ,
+                    'nama_lengkap' => $komite->nama ?: 'Komite Teknis',
+                    'email'        => $komite->email ?: ($username . '@example.com'),
+                    'no_ktp'       => $komite->no_ktp,
+                    'no_telp'      => $komite->no_hp,
+                    'password'     => $hashed,
                     'level'        => 'komite-teknis',
                     'blokir'       => 'N',
                 ]

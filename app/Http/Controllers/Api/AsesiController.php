@@ -537,8 +537,10 @@ class AsesiController extends Controller
         try {
             DB::beginTransaction();
 
-            // Generate no_pendaftaran
-            $noPendaftaran = Asesi::generateNoPendaftaran();
+            // Generate no_pendaftaran (gunakan input frontend jika berformat REG-, atau generate baru)
+            $noPendaftaran = $request->filled('no_pendaftaran') && str_starts_with($request->no_pendaftaran, 'REG-')
+                ? $request->no_pendaftaran
+                : Asesi::generateNoPendaftaran();
             $tglDaftar = now()->toDateString();
             $angkatan = now()->year;
 

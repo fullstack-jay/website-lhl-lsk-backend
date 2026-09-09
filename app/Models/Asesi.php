@@ -340,23 +340,37 @@ class Asesi extends Model
     /**
      * Generate nomor pendaftaran otomatis
      */
-    public static function generateNoPendaftaran()
+    /**
+     * Generate nomor pendaftaran otomatis
+     * Format: REG-YYYYMMDD-XXXX (contoh: REG-20260904-0001)
+     */
+    public static function generateNoPendaftaran(): string
     {
-        $date = now();
-        $prefix = $date->format('Ymd');
+        $date = now()->format('Ymd');
+        $prefix = "REG-{$date}-";
 
-        // Get last registration number for today
+        // Get last registration number for today with REG- prefix
         $last = self::where('no_pendaftaran', 'like', $prefix . '%')
             ->orderBy('no_pendaftaran', 'desc')
             ->first();
 
         if ($last) {
-            $lastNumber = (int) substr($last->no_pendaftaran, -3);
-            $newNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+            $lastNumber = (int) substr($last->no_pendaftaran, -4);
+            $newNumber = $lastNumber + 1;
         } else {
-            $newNumber = '001';
+            // Also check legacy format YmdXXX (e.g. 20260908001) for today
+            $lastLegacy = self::where('no_pendaftaran', 'like', $date . '%')
+                ->where('no_pendaftaran', 'not like', 'REG-%')
+                ->orderBy('no_pendaftaran', 'desc')
+                ->first();
+
+            if ($lastLegacy && preg_match('/(\d{3,4})$/', $lastLegacy->no_pendaftaran, $m)) {
+                $newNumber = ((int) $m[1]) + 1;
+            } else {
+                $newNumber = 1;
+            }
         }
 
-        return $prefix . $newNumber;
+        return $prefix . str_pad($newNumber, 4, '0', STR_PAD_LEFT);
     }
 }

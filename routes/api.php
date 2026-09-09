@@ -167,6 +167,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
     // Penguji (Asesor) routes — sesuai docs/BACKEND_PENGUJI.md
     Route::prefix('penguji')->group(function () {
+        // Form Penilaian Asesi (4 Instrumen Uji) - support direct /api/v1/penguji/jadwal/...
+        Route::get('/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
+        Route::get('/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);
+        Route::post('/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'store']);
+
         // Specific routes BEFORE parameterized {id}
         Route::get('/statistics', [\App\Http\Controllers\Api\PengujiController::class, 'statistics']);
 
@@ -256,6 +261,17 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'update']);  // FormData compatibility
         Route::delete('/{id}', [\App\Http\Controllers\Api\FrontpageController::class, 'destroy']);
     });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Penguji Direct Routes (/api/v1/penguji/...)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth:sanctum'])->prefix('penguji')->group(function () {
+    Route::get('/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
+    Route::get('/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);
+    Route::post('/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'store']);
 });
 
 /*

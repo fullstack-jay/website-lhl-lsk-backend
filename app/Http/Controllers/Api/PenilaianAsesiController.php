@@ -93,9 +93,10 @@ class PenilaianAsesiController extends Controller
 
         if (!$penilaian) {
             return response()->json([
-                'success' => false,
+                'success' => true,
+                'data' => null,
                 'message' => 'Penilaian belum tersedia untuk peserta ini.',
-            ], 404);
+            ], 200);
         }
 
         return response()->json([

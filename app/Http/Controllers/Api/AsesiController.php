@@ -1609,6 +1609,55 @@ class AsesiController extends Controller
         $data['skema_list'] = $skemaList;
         $data['total_skema'] = $skemaList->count();
 
+        // Cek pendaftaran/pembayaran remedial peserta
+        $asesmenIds = \DB::table('asesi_asesmen')
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->orWhere('id_asesi', (string) $asesi->id)
+            ->pluck('id')
+            ->toArray();
+
+        $remedialPembayaran = \DB::table('asesi_pembayaran')
+            ->where(function ($q) use ($asesi, $asesmenIds) {
+                $q->where('id_asesi', $asesi->no_pendaftaran)
+                  ->orWhere('id_asesi', (string) $asesi->id);
+                if (!empty($asesmenIds)) {
+                    $q->orWhereIn('id_asesmen', $asesmenIds);
+                }
+            })
+            ->where(function ($q) {
+                $q->where('nominal', 1500000)
+                  ->orWhere('jalur_bayar', 'like', '%remedial%');
+            })
+            ->orderBy('id', 'desc')
+            ->first();
+
+        // Fallback jika ada 2+ pembayaran dan belum teridentifikasi
+        if (!$remedialPembayaran) {
+            $allPayments = \DB::table('asesi_pembayaran')
+                ->where(function ($q) use ($asesi) {
+                    $q->where('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                })
+                ->orderBy('id', 'desc')
+                ->get();
+            if ($allPayments->count() > 1) {
+                $remedialPembayaran = $allPayments->first();
+            }
+        }
+
+        $data['remedial'] = $remedialPembayaran ? [
+            'id' => $remedialPembayaran->id,
+            'nominal' => (int) $remedialPembayaran->nominal,
+            'nominal_formatted' => number_format((float) $remedialPembayaran->nominal, 0, ',', '.'),
+            'status' => $remedialPembayaran->status,
+            'status_label' => $remedialPembayaran->status === 'V' ? 'Lunas' : 'Menunggu Validasi',
+            'is_verified' => $remedialPembayaran->status === 'V',
+            'tgl_bayar' => $remedialPembayaran->tgl_bayar,
+            'file' => $remedialPembayaran->file,
+            'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
+        ] : null;
+        $data['status_remedial'] = $remedialPembayaran ? ($remedialPembayaran->status === 'V' ? 'lunas' : 'menunggu_verifikasi') : 'belum_daftar';
+
         return $data;
     }
 
@@ -1812,9 +1861,20 @@ class AsesiController extends Controller
         $data['dokumen_skema'] = $dokumenSkema;
 
         // Pembayaran asesi (konfirmasi pembayaran & bukti transfer)
-        $pembayaranItems = \DB::table('asesi_pembayaran')
+        $asesmenIds = \DB::table('asesi_asesmen')
             ->where('id_asesi', $asesi->no_pendaftaran)
             ->orWhere('id_asesi', (string) $asesi->id)
+            ->pluck('id')
+            ->toArray();
+
+        $pembayaranItems = \DB::table('asesi_pembayaran')
+            ->where(function ($q) use ($asesi, $asesmenIds) {
+                $q->where('id_asesi', $asesi->no_pendaftaran)
+                  ->orWhere('id_asesi', (string) $asesi->id);
+                if (!empty($asesmenIds)) {
+                    $q->orWhereIn('id_asesmen', $asesmenIds);
+                }
+            })
             ->orderBy('id', 'desc')
             ->get()
             ->map(function ($p) {
@@ -1846,6 +1906,18 @@ class AsesiController extends Controller
 
         $data['pembayaran'] = $pembayaranItems->values()->toArray();
         $data['pembayaran_terakhir'] = $pembayaranItems->first();
+
+        // Deteksi pembayaran remedial
+        $remedialItem = $pembayaranItems->first(function ($p) {
+            return $p['nominal'] == 1500000 || stripos($p['jalur_bayar'] ?? '', 'remedial') !== false;
+        });
+        if (!$remedialItem && $pembayaranItems->count() > 1) {
+            $remedialItem = $pembayaranItems->first();
+        }
+        $data['remedial_pembayaran'] = $remedialItem;
+        if ($remedialItem || ($primaryAsesmen && $primaryAsesmen->tujuan_sertifikasi === 'Sertifikasi Ulang')) {
+            $data['tujuan_sertifikasi'] = 'Sertifikasi Ulang';
+        }
         $data['biaya_asesmen_status'] = $primaryAsesmen ? $primaryAsesmen->biaya_asesmen : 'P';
 
         return $data;

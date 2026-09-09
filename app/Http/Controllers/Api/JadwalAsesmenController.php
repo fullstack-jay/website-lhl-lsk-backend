@@ -517,6 +517,29 @@ class JadwalAsesmenController extends Controller
                     'no_lisensi' => $asesor->no_lisensi,
                 ];
             }) : [],
+            // Dokumen pendukung selalu disertakan agar status badge dapat dirender di kartu jadwal
+            'no_surattugas' => $jadwal->no_surattugas,
+            'file_surattugas' => $jadwal->file_surattugas,
+            'file_surattugas_url' => $jadwal->file_surattugas ? asset('foto_surat/' . $jadwal->file_surattugas) : null,
+            'no_surattugaskomtek' => $jadwal->no_surattugaskomtek,
+            'tgl_surattugaskomtek' => $jadwal->tgl_surattugaskomtek ? (is_string($jadwal->tgl_surattugaskomtek) ? substr($jadwal->tgl_surattugaskomtek, 0, 10) : $jadwal->tgl_surattugaskomtek->format('Y-m-d')) : null,
+            'file_surattugaskomtek' => $jadwal->file_surattugaskomtek,
+            'file_surattugaskomtek_url' => $jadwal->file_surattugaskomtek ? asset('foto_surat/' . $jadwal->file_surattugaskomtek) : null,
+            'no_surattugasia11' => $jadwal->no_surattugasia11,
+            'tgl_surattugasia11' => $jadwal->tgl_surattugasia11 ? (is_string($jadwal->tgl_surattugasia11) ? substr($jadwal->tgl_surattugasia11, 0, 10) : $jadwal->tgl_surattugasia11->format('Y-m-d')) : null,
+            'file_surattugasia11' => $jadwal->file_surattugasia11,
+            'file_surattugasia11_url' => $jadwal->file_surattugasia11 ? asset('foto_surat/' . $jadwal->file_surattugasia11) : null,
+            'no_bakomite' => $jadwal->no_bakomite,
+            'file_bakomite' => $jadwal->file_bakomite,
+            'file_bakomite_url' => $jadwal->file_bakomite ? asset('foto_surat/' . $jadwal->file_bakomite) : null,
+            'no_skkeputusan' => $jadwal->no_skkeputusan,
+            'file_skkeputusan' => $jadwal->file_skkeputusan,
+            'file_skkeputusan_url' => $jadwal->file_skkeputusan ? asset('foto_surat/' . $jadwal->file_skkeputusan) : null,
+            'no_permohonanblangko' => $jadwal->no_permohonanblangko,
+            'file_permohonanblangko' => $jadwal->file_permohonanblangko,
+            'file_permohonanblangko_url' => $jadwal->file_permohonanblangko ? asset('foto_surat/' . $jadwal->file_permohonanblangko) : null,
+            'dok_standarkompetensi' => $jadwal->dok_standarkompetensi,
+            'dok_standarkompetensi_url' => $jadwal->dok_standarkompetensi ? asset('foto_dokskkni/' . $jadwal->dok_standarkompetensi) : null,
         ];
 
         if ($detail) {
@@ -810,8 +833,8 @@ class JadwalAsesmenController extends Controller
         $dokumen = [
             'surattugas' => [
                 'key' => 'surattugas',
-                'nama' => 'Surat Tugas Asesor',
-                'deskripsi' => 'Dokumen resmi penugasan asesor untuk asesmen kompetensi',
+                'nama' => 'Surat Tugas Penguji',
+                'deskripsi' => 'Dokumen resmi penugasan penguji untuk asesmen kompetensi',
                 'nomor' => $jadwal->no_surattugas,
                 'file' => $jadwal->file_surattugas,
                 'file_url' => $jadwal->file_surattugas ? asset('foto_surat/' . $jadwal->file_surattugas) : null,

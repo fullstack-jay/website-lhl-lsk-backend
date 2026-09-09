@@ -331,6 +331,9 @@ class KonfirmasiPembayaranController extends Controller
 
             // 5. ⭐ PIPELINE MAJU: biaya_asesmen 'P' → 'K'
             $asesmen->biaya_asesmen = 'K';
+            if ((int)$request->nominal === 1500000 || stripos($request->jalur_bayar ?? '', 'remedial') !== false) {
+                $asesmen->tujuan_sertifikasi = 'Sertifikasi Ulang';
+            }
             $asesmen->save();
 
             DB::commit();

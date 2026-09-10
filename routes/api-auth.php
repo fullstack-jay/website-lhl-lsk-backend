@@ -43,6 +43,12 @@ Route::prefix('auth')->group(function () {
         Route::get('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'ceklis']);
         Route::post('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'simpanCeklis']);
 
+        // Jadwal Meninjau Instrumen Asesmen (FR.IA.11) — docs/BACKEND_JADWAL_MENINJAU_INSTRUMEN.md
+        Route::get('penguji/meninjau-instrumen', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'index']);
+        Route::get('penguji/tinjau-ia11/{idJadwal}', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'peserta']);
+        Route::get('penguji/tinjau-ia11/{idJadwal}/asesi/{noPendaftaran}', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'form']);
+        Route::post('penguji/tinjau-ia11/{idJadwal}/asesi/{noPendaftaran}', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'simpan']);
+
         // Form Penilaian Asesi (4 Instrumen Uji) — docs/BACKEND_FORM_PENILAIAN.md
         Route::get('penguji/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
         Route::get('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);

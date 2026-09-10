@@ -544,6 +544,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::get('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPenguji']);
         Route::get('/{id}/penguji-tersedia', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getPengujiTersedia']);
         Route::post('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignPenguji']);
+        Route::post('/{id}/peninjau-ia11', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updatePeninjauIa11']);
         Route::delete('/{id}/penguji/{idAsesor}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignPenguji']);
         Route::get('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getDokumen']);
         Route::post('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateDokumen']);

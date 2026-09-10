@@ -517,6 +517,30 @@ class JadwalAsesmenController extends Controller
                     'no_lisensi' => $asesor->no_lisensi,
                 ];
             }) : [],
+            'peninjau' => \DB::table('asesi_asesmen')
+                ->join('asesor', 'asesor.id', '=', 'asesi_asesmen.peninjau_ia11')
+                ->where('asesi_asesmen.id_jadwal', $jadwal->id)
+                ->whereNotNull('asesi_asesmen.peninjau_ia11')
+                ->select(
+                    'asesor.id',
+                    'asesor.nama',
+                    'asesor.gelar_depan',
+                    'asesor.gelar_blk',
+                    'asesor.no_lisensi'
+                )
+                ->distinct()
+                ->get()
+                ->map(function ($pen) {
+                    return [
+                        'id' => $pen->id,
+                        'nama' => $pen->nama,
+                        'gelar_depan' => $pen->gelar_depan,
+                        'gelar_blk' => $pen->gelar_blk,
+                        'no_lisensi' => $pen->no_lisensi,
+                    ];
+                })
+                ->values()
+                ->all(),
             // Dokumen pendukung selalu disertakan agar status badge dapat dirender di kartu jadwal
             'no_surattugas' => $jadwal->no_surattugas,
             'file_surattugas' => $jadwal->file_surattugas,
@@ -604,6 +628,7 @@ class JadwalAsesmenController extends Controller
 
         $items = \App\Models\AsesiAsesmen::where('id_jadwal', $id)
             ->join('asesi', 'asesi.no_pendaftaran', '=', 'asesi_asesmen.id_asesi')
+            ->leftJoin('asesor as peninjau', 'peninjau.id', '=', 'asesi_asesmen.peninjau_ia11')
             ->select([
                 'asesi.id as id',
                 'asesi_asesmen.id as id_asesmen',
@@ -612,6 +637,10 @@ class JadwalAsesmenController extends Controller
                 'asesi.no_ktp',
                 'asesi_asesmen.tgl_daftar',
                 'asesi_asesmen.status_asesmen',
+                'asesi_asesmen.peninjau_ia11',
+                'peninjau.nama as peninjau_nama',
+                'peninjau.gelar_depan as peninjau_gelar_depan',
+                'peninjau.gelar_blk as peninjau_gelar_blk',
             ])
             ->orderBy('asesi_asesmen.id', 'desc')
             ->get();
@@ -619,6 +648,90 @@ class JadwalAsesmenController extends Controller
         return response()->json([
             'success' => true,
             'data' => $items,
+        ]);
+    }
+
+    /**
+     * Assign or unassign Peninjau IA.11 for peserta in a schedule
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function updatePeninjauIa11(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'id_asesor' => 'nullable|integer',
+            'id_asesmen' => 'nullable|integer',
+            'apply_all' => 'nullable|boolean',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $idAsesor = $request->input('id_asesor');
+        $applyAll = filter_var($request->input('apply_all', false), FILTER_VALIDATE_BOOLEAN);
+        $idAsesmen = $request->input('id_asesmen');
+
+        if ($idAsesor !== null) {
+            $asesorExists = \DB::table('asesor')->where('id', $idAsesor)->exists();
+            if (!$asesorExists) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Data asesor peninjau tidak ditemukan',
+                ], 404);
+            }
+        }
+
+        if ($applyAll) {
+            $affected = \DB::table('asesi_asesmen')
+                ->where('id_jadwal', $id)
+                ->update(['peninjau_ia11' => $idAsesor]);
+
+            return response()->json([
+                'success' => true,
+                'message' => $idAsesor
+                    ? "Berhasil menugaskan peninjau IA.11 untuk {$affected} peserta"
+                    : "Berhasil mengosongkan peninjau IA.11 untuk seluruh peserta",
+                'affected' => $affected,
+            ]);
+        }
+
+        if (!$idAsesmen) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Parameter id_asesmen atau apply_all wajib diisi',
+            ], 422);
+        }
+
+        $peserta = \DB::table('asesi_asesmen')
+            ->where('id', $idAsesmen)
+            ->where('id_jadwal', $id)
+            ->first();
+
+        if (!$peserta) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Data peserta asesmen tidak ditemukan pada jadwal ini',
+            ], 404);
+        }
+
+        \DB::table('asesi_asesmen')
+            ->where('id', $idAsesmen)
+            ->update(['peninjau_ia11' => $idAsesor]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $idAsesor
+                ? 'Berhasil menugaskan peninjau IA.11'
+                : 'Berhasil melepas peninjau IA.11',
         ]);
     }
 

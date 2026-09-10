@@ -63,5 +63,8 @@ Route::prefix('auth')->group(function () {
         Route::get('penguji/jadwal/{id_jadwal}/penilaian', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'index']);
         Route::get('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'show']);
         Route::post('penguji/jadwal/{id_jadwal}/penilaian/{no_pendaftaran}', [\App\Http\Controllers\Api\PenilaianAsesiController::class, 'store']);
+
+        // SMS Notifikasi / Pesan Masuk (read-only, Gammu gateway) — docs/BACKEND_PESAN_MASUK.md
+        Route::get('penguji/pesan-masuk', [\App\Http\Controllers\Api\PesanMasukPengujiController::class, 'index']);
     });
 });

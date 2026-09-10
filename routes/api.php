@@ -487,6 +487,7 @@ Route::prefix('event')->group(function () {
     // Public routes
     Route::get('/', [\App\Http\Controllers\Api\EventController::class, 'index']);
     Route::get('/statistics', [\App\Http\Controllers\Api\EventController::class, 'statistics']);
+    Route::get('/{id}/rekap-nilai', [\App\Http\Controllers\Api\EventController::class, 'rekapNilai']);
     Route::get('/{id}', [\App\Http\Controllers\Api\EventController::class, 'show']);
 });
 
@@ -522,6 +523,8 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::prefix('event')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\EventController::class, 'index']);
         Route::get('/statistics', [\App\Http\Controllers\Api\EventController::class, 'statistics']);
+        Route::get('/{id}/rekap-nilai', [\App\Http\Controllers\Api\EventController::class, 'rekapNilai']);
+        Route::post('/{id}/tanda-tangan-ketua', [\App\Http\Controllers\Api\EventController::class, 'saveTtdKetua']);
         Route::get('/{id}', [\App\Http\Controllers\Api\EventController::class, 'show']);
     });
 

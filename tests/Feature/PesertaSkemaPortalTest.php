@@ -35,7 +35,8 @@ class PesertaSkemaPortalTest extends TestCase
 
     /**
      * Peserta test lengkap: asesi + users terkait (dalam transaksi test).
-     * Dokumen pokok wajib diisi agar gate hijau.
+     * Dokumen pokok wajib diisi + terverifikasi agar gate hijau
+     * (gate 4 syarat: usia, pendidikan S1/D4, dokumen lengkap, profil terverifikasi).
      */
     private function buatPesertaLolosGate(): array
     {
@@ -53,7 +54,7 @@ class PesertaSkemaPortalTest extends TestCase
             'email' => 'peserta-test@example.com',
             'nohp' => '081234567890',
             'tgl_daftar' => now()->toDateString(),
-            'verifikasi' => 'P',
+            'verifikasi' => 'V',
             'blokir' => 'N',
         ]);
 

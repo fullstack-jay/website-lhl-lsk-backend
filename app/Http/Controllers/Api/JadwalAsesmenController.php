@@ -517,6 +517,8 @@ class JadwalAsesmenController extends Controller
                     'no_lisensi' => $asesor->no_lisensi,
                 ];
             }) : [],
+            'asesor_mkva1' => $jadwal->asesor_mkva1 ? (int)$jadwal->asesor_mkva1 : null,
+            'asesor_mkva2' => $jadwal->asesor_mkva2 ? (int)$jadwal->asesor_mkva2 : null,
             'peninjau' => \DB::table('asesi_asesmen')
                 ->join('asesor', 'asesor.id', '=', 'asesi_asesmen.peninjau_ia11')
                 ->where('asesi_asesmen.id_jadwal', $jadwal->id)
@@ -1172,5 +1174,129 @@ class JadwalAsesmenController extends Controller
         }
 
         return $this->getDokumen($id);
+    }
+
+    /**
+     * Get MKVA validators for a schedule
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getMkva($id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $v1 = $jadwal->asesor_mkva1
+            ? Asesor::select('id', 'nama', 'gelar_depan', 'gelar_blk', 'no_lisensi', 'no_hp', 'email')
+                ->find($jadwal->asesor_mkva1)
+            : null;
+
+        $v2 = $jadwal->asesor_mkva2
+            ? Asesor::select('id', 'nama', 'gelar_depan', 'gelar_blk', 'no_lisensi', 'no_hp', 'email')
+                ->find($jadwal->asesor_mkva2)
+            : null;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'validator1' => $v1,
+                'validator2' => $v2,
+            ],
+        ]);
+    }
+
+    /**
+     * Assign an assessor as MKVA validator (posisi 1 or 2)
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function assignMkva(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'id_asesor' => 'required|integer|exists:asesor,id',
+            'posisi' => 'required|in:1,2',
+        ], [
+            'id_asesor.required' => 'Asesor validator wajib dipilih',
+            'id_asesor.exists' => 'Asesor tidak valid',
+            'posisi.required' => 'Posisi validator wajib ditentukan (1 atau 2)',
+            'posisi.in' => 'Posisi validator harus 1 atau 2',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal: ' . implode(', ', $validator->errors()->all()),
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $posisi = (int) $request->input('posisi');
+        $idAsesor = (int) $request->input('id_asesor');
+
+        if ($posisi === 1) {
+            if ($jadwal->asesor_mkva2 == $idAsesor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Asesor ini sudah ditugaskan sebagai Validator 2 pada jadwal ini.',
+                ], 422);
+            }
+            $jadwal->asesor_mkva1 = $idAsesor;
+        } else {
+            if ($jadwal->asesor_mkva1 == $idAsesor) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Asesor ini sudah ditugaskan sebagai Validator 1 pada jadwal ini.',
+                ], 422);
+            }
+            $jadwal->asesor_mkva2 = $idAsesor;
+        }
+
+        $jadwal->save();
+
+        $asesor = Asesor::select('id', 'nama', 'gelar_depan', 'gelar_blk', 'no_lisensi', 'no_hp', 'email')
+            ->find($idAsesor);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Asesor berhasil ditugaskan sebagai Validator {$posisi} (MKVA).",
+            'data' => [
+                'posisi' => $posisi,
+                'asesor' => $asesor,
+            ],
+        ]);
+    }
+
+    /**
+     * Unassign MKVA validator (posisi 1 or 2)
+     *
+     * @param int $id
+     * @param int|string $posisi
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function unassignMkva($id, $posisi)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        if ($posisi == 1) {
+            $jadwal->asesor_mkva1 = null;
+        } elseif ($posisi == 2) {
+            $jadwal->asesor_mkva2 = null;
+        } else {
+            return response()->json([
+                'success' => false,
+                'message' => 'Posisi validator tidak valid (harus 1 atau 2).',
+            ], 400);
+        }
+
+        $jadwal->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Validator {$posisi} berhasil dilepas dari jadwal ini.",
+        ]);
     }
 }

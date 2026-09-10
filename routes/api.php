@@ -549,6 +549,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignPenguji']);
         Route::post('/{id}/peninjau-ia11', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updatePeninjauIa11']);
         Route::delete('/{id}/penguji/{idAsesor}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignPenguji']);
+        Route::get('/{id}/mkva', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getMkva']);
+        Route::post('/{id}/mkva', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignMkva']);
+        Route::delete('/{id}/mkva/{posisi}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignMkva']);
         Route::get('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getDokumen']);
         Route::post('/{id}/dokumen', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updateDokumen']);
         Route::delete('/{id}/dokumen/{jenis}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'deleteDokumen']);

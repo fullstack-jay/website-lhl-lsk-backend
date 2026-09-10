@@ -43,6 +43,16 @@ Route::prefix('auth')->group(function () {
         Route::get('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'ceklis']);
         Route::post('penguji/verifikasi-tuk/ceklis/{idJadwal}', [\App\Http\Controllers\Api\VerifikasiTukPengujiController::class, 'simpanCeklis']);
 
+        // Penugasan MKVA (FR.VA) — docs/BACKEND_PENUGASAN_MKVA.md
+        Route::get('penguji/mkva', [\App\Http\Controllers\Api\MkvaController::class, 'index']);
+        Route::get('penguji/mkva/{idJadwal}', [\App\Http\Controllers\Api\MkvaController::class, 'show']);
+        Route::post('penguji/mkva/{idJadwal}', [\App\Http\Controllers\Api\MkvaController::class, 'simpanBagian1']);
+        Route::get('penguji/mkva/{idJadwal}/temuan-perbaikan', [\App\Http\Controllers\Api\MkvaController::class, 'bagian2']);
+        Route::post('penguji/mkva/{idJadwal}/temuan', [\App\Http\Controllers\Api\MkvaController::class, 'storeTemuan']);
+        Route::delete('penguji/mkva/{idJadwal}/temuan/{id}', [\App\Http\Controllers\Api\MkvaController::class, 'destroyTemuan']);
+        Route::post('penguji/mkva/{idJadwal}/perbaikan', [\App\Http\Controllers\Api\MkvaController::class, 'storePerbaikan']);
+        Route::delete('penguji/mkva/{idJadwal}/perbaikan/{id}', [\App\Http\Controllers\Api\MkvaController::class, 'destroyPerbaikan']);
+
         // Jadwal Meninjau Instrumen Asesmen (FR.IA.11) — docs/BACKEND_JADWAL_MENINJAU_INSTRUMEN.md
         Route::get('penguji/meninjau-instrumen', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'index']);
         Route::get('penguji/tinjau-ia11/{idJadwal}', [\App\Http\Controllers\Api\MeninjauInstrumenController::class, 'peserta']);

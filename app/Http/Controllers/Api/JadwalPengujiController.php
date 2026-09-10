@@ -93,6 +93,49 @@ class JadwalPengujiController extends Controller
                 }
             }
 
+            // Verifikasi TUK status & tim verifikator
+            $verifRows = DB::table('asesor_verifikatortuk as v')
+                ->leftJoin('asesor as a', 'a.id', '=', DB::raw('CAST(v.id_asesor AS UNSIGNED)'))
+                ->where('v.id_jadwal', $j->id)
+                ->get(['a.id', 'a.nama', 'a.gelar_depan', 'a.gelar_blk', 'v.keputusanverifikasi', 'v.tgl_verifikasi', 'v.waktu']);
+
+            if ($verifRows->isNotEmpty()) {
+                $adaY = $verifRows->contains('keputusanverifikasi', 'Y');
+                $adaN = $verifRows->contains('keputusanverifikasi', 'N');
+                $keputusan = $adaY ? 'Y' : ($adaN ? 'N' : 'P');
+                $label = match ($keputusan) {
+                    'Y' => 'Sesuai Persyaratan Skema',
+                    'N' => 'Tidak Sesuai Persyaratan Skema',
+                    default => 'Belum Dilaksanakan Verifikasi',
+                };
+                $first = $verifRows->first();
+                $timVerifikator = $verifRows->map(function ($a) {
+                    return [
+                        'id' => $a->id,
+                        'nama_lengkap' => trim(($a->gelar_depan ? $a->gelar_depan . ' ' : '') . $a->nama . ($a->gelar_blk ? ', ' . $a->gelar_blk : '')),
+                        'keputusan' => $a->keputusanverifikasi,
+                    ];
+                })->values()->all();
+
+                $verifikasiTuk = [
+                    'terverifikasi' => in_array($keputusan, ['Y', 'N']),
+                    'keputusan' => $keputusan,
+                    'keputusan_label' => $label,
+                    'tgl_verifikasi' => $first->tgl_verifikasi,
+                    'waktu_verifikasi' => $first->waktu,
+                    'tim_verifikator' => $timVerifikator,
+                ];
+            } else {
+                $verifikasiTuk = [
+                    'terverifikasi' => false,
+                    'keputusan' => null,
+                    'keputusan_label' => 'Belum Ada Verifikator',
+                    'tgl_verifikasi' => null,
+                    'waktu_verifikasi' => null,
+                    'tim_verifikator' => [],
+                ];
+            }
+
             return [
                 'id_jadwal' => $j->id,
                 'nama_kegiatan' => $namaKegiatan,
@@ -121,6 +164,7 @@ class JadwalPengujiController extends Controller
                 'kapasitas' => $j->kapasitas ? (int) $j->kapasitas : null,
                 'jumlah_peserta' => (int) $j->jumlah_peserta,
                 'status' => $j->status,                     // Draft/Terkonfirmasi/Berlangsung/Selesai
+                'verifikasi_tuk' => $verifikasiTuk,
                 'surat_tugas' => [
                     'no_surattugas' => $j->no_surattugas,
                     'file' => $j->file_surattugas,

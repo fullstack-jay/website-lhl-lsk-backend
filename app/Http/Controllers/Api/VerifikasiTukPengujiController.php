@@ -138,7 +138,7 @@ class VerifikasiTukPengujiController extends Controller
                 'punya_peserta' => (int) $v->jumlah_peserta > 0,
                 // Aksi kondisional (hanya jika ada peserta — idem native)
                 'aksi' => (int) $v->jumlah_peserta > 0 ? [
-                    ['label' => 'Input Ceklis Verifikasi TUK', 'url' => "/peserta-verifikasi-tuk/ceklis/{$v->id_jadwal}"],
+                    ['label' => in_array($v->keputusanverifikasi, ['Y', 'N']) ? 'Lihat / Edit Ceklis Verifikasi TUK' : 'Input Ceklis Verifikasi TUK', 'url' => "/peserta-verifikasi-tuk/ceklis/{$v->id_jadwal}"],
                     ['label' => 'Berita Acara & Ceklis', 'url' => "/unduh-ceklis?idj={$v->id_jadwal}", 'tipe' => 'pdf'],
                     ['label' => 'Surat Tugas Verifikasi', 'url' => "/unduh-surattugas-vertuk?idj={$v->id_jadwal}", 'tipe' => 'pdf'],
                 ] : [],
@@ -214,6 +214,9 @@ class VerifikasiTukPengujiController extends Controller
                     'judul' => $jadwal->skema_judul ?? null,
                 ],
                 'keputusan' => $penugasan->keputusanverifikasi,   // P | Y | N (pre-checked radio)
+                'keputusan_label' => $this->keputusanLabel($penugasan->keputusanverifikasi),
+                'sudah_diverifikasi' => in_array($penugasan->keputusanverifikasi, ['Y', 'N']),
+                'waktu_verifikasi' => $penugasan->waktu,
                 'progress' => ['sudah' => $sudahDicek, 'total' => $perlengkapan->count()],
                 'perlengkapan' => $perlengkapan,
             ],

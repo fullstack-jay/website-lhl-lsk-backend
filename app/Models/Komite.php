@@ -188,23 +188,32 @@ class Komite extends Model
     }
     /**
      * Auto-generate Nomor Induk Komite
-     * Format: KOMITE001, KOMITE002, ...
+     * Format: KOMITE/2026/001, KOMITE/2026/002, ...
      */
-    public static function generateNoInduk(): string
+    public static function generateNoInduk(?string $prefix = null, ?string $year = null): string
     {
-        $prefix = 'KOMITE';
-        $last = self::where('no_induk', 'like', $prefix . '%')
+        $yr = $year ?: date('Y');
+        $pref = $prefix ?: 'KOMITE';
+
+        // Jika prefix belum mengandung '/', rangkai format standar: {PREFIX}/{TAHUN}/
+        if (!str_contains($pref, '/')) {
+            $formatPrefix = "{$pref}/{$yr}/";
+        } else {
+            $formatPrefix = rtrim($pref, '/') . '/';
+        }
+
+        $last = self::where('no_induk', 'like', $formatPrefix . '%')
             ->orderByRaw('LENGTH(no_induk) DESC')
             ->orderBy('no_induk', 'desc')
             ->first();
 
-        if ($last && preg_match('/KOMITE(\d+)/i', $last->no_induk, $matches)) {
+        if ($last && preg_match('/' . preg_quote($formatPrefix, '/') . '(\d+)/i', $last->no_induk, $matches)) {
             $seq = (int) $matches[1] + 1;
         } else {
             $seq = 1;
         }
 
-        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+        return $formatPrefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
     }
 
 }

@@ -193,8 +193,15 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     });
 
     // Komite Teknis routes — sesuai docs/BACKEND_KOMITETEKNIS.md
+    // Komite Teknis Profil routes (User login)
+    Route::prefix('komite-teknis')->middleware('auth:sanctum')->group(function () {
+        Route::get('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
+        Route::post('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
+    });
+
     Route::prefix('komite')->group(function () {
         Route::get('/statistics', [\App\Http\Controllers\Api\KomiteController::class, 'statistics']);
+        Route::get('/generate-no-induk', [\App\Http\Controllers\Api\KomiteController::class, 'generateNoInduk']);
 
         Route::get('/', [\App\Http\Controllers\Api\KomiteController::class, 'index']);
         Route::post('/', [\App\Http\Controllers\Api\KomiteController::class, 'store']);

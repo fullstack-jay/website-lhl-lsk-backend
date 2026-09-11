@@ -93,6 +93,27 @@ class KomiteController extends Controller
     /**
      * GET /api/v1/admin/komite/statistics — jumlah per tab (badge).
      */
+    /**
+     * GET /api/v1/admin/komite/generate-no-induk
+     * Menghasilkan nomor induk/registrasi komite otomatis berikutnya (berurutan).
+     */
+    public function generateNoInduk(Request $request): JsonResponse
+    {
+        $prefix = $request->query('prefix', 'KOMITE');
+        $year = $request->query('year', date('Y'));
+        $noInduk = Komite::generateNoInduk($prefix, $year);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'no_induk' => $noInduk,
+                'prefix' => $prefix,
+                'year' => $year,
+            ],
+            'message' => 'Nomor induk otomatis berhasil dihasilkan',
+        ]);
+    }
+
     public function statistics(): JsonResponse
     {
         $today = now()->startOfDay();

@@ -23,7 +23,9 @@ class WilayahController extends Controller
             'success' => true,
             'data' => $provinsi->map(function ($item) {
                 return [
-                    'value' => $item->id_wil,
+                    'id' => (string) $item->id_wil,
+                    'name' => $item->nm_wil,
+                    'value' => (string) $item->id_wil,
                     'label' => $item->nm_wil,
                 ];
             }),
@@ -47,7 +49,9 @@ class WilayahController extends Controller
             'success' => true,
             'data' => $kota->map(function ($item) {
                 return [
-                    'value' => $item->id_wil,
+                    'id' => (string) $item->id_wil,
+                    'name' => $item->nm_wil,
+                    'value' => (string) $item->id_wil,
                     'label' => $item->nm_wil,
                 ];
             }),
@@ -71,7 +75,9 @@ class WilayahController extends Controller
             'success' => true,
             'data' => $kecamatan->map(function ($item) {
                 return [
-                    'value' => $item->id_wil,
+                    'id' => (string) $item->id_wil,
+                    'name' => $item->nm_wil,
+                    'value' => (string) $item->id_wil,
                     'label' => $item->nm_wil,
                 ];
             }),

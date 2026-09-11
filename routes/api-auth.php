@@ -34,6 +34,8 @@ Route::prefix('auth')->group(function () {
 
         // Komite Teknis protected routes
         Route::get('komite-teknis/me', [Auth\KomiteTeknisAuthController::class, 'me']);
+        Route::get('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
+        Route::post('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
 
         // Penguji protected routes
         Route::get('penguji/me', [Auth\PengujiAuthController::class, 'me']);

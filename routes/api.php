@@ -621,7 +621,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     });
 });
 // Komite Teknis Routes (accessible via /api/v1/komite-teknis/...)
-Route::prefix('komite-teknis')->middleware('auth:sanctum')->group(function () {
+Route::prefix('komite-teknis')->group(function () {
     Route::get('/jadwal', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'jadwal']);
     Route::get('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);

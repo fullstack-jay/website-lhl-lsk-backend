@@ -16,6 +16,10 @@ Route::prefix('auth')->group(function () {
     // Penguji Login (Public)
     Route::post('penguji/login', [Auth\PengujiAuthController::class, 'login']);
 
+    // Penguji Lupa Password (Public, rate-limited) — docs/BACKEND_LUPA_PASSWORD_PENGUJI.md Fitur B
+    Route::post('penguji/lupa-password', [Auth\PengujiAuthController::class, 'lupaPassword'])
+        ->middleware('throttle:lupa-password');
+
     // Protected routes (require authentication)
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('logout', [Auth\AuthController::class, 'logout']);
@@ -33,6 +37,9 @@ Route::prefix('auth')->group(function () {
 
         // Penguji protected routes
         Route::get('penguji/me', [Auth\PengujiAuthController::class, 'me']);
+
+        // Penguji Ubah Password sendiri — docs/BACKEND_LUPA_PASSWORD_PENGUJI.md Fitur A
+        Route::post('penguji/ubah-password', [Auth\PengujiAuthController::class, 'ubahPassword']);
 
         // Jadwal Uji Kompetensi penguji — docs/BACKEND_PENGUJI_JADWAL_UJI_KOMPETENSI.md
         Route::get('penguji/jadwal-uji', [\App\Http\Controllers\Api\JadwalPengujiController::class, 'index']);

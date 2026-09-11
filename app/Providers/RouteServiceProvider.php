@@ -56,5 +56,11 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by((string) $request->user()?->id ?: $request->ip() ?: 'unknown');
         });
+
+        // Lupa password penguji — anti brute-force security question
+        // (docs/BACKEND_LUPA_PASSWORD_PENGUJI.md §Improvements)
+        RateLimiter::for('lupa-password', function (Request $request) {
+            return Limit::perMinute(5)->by($request->ip() ?: 'unknown');
+        });
     }
 }

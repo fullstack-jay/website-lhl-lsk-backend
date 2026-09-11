@@ -36,6 +36,8 @@ Route::prefix('auth')->group(function () {
         Route::get('komite-teknis/me', [Auth\KomiteTeknisAuthController::class, 'me']);
         Route::get('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
         Route::post('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
+        Route::get('komite-teknis/hasil-asesmen', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'index']);
+        Route::post('komite-teknis/hasil-asesmen/{id}/rekomendasi', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'storeRekomendasi']);
 
         // Penguji protected routes
         Route::get('penguji/me', [Auth\PengujiAuthController::class, 'me']);

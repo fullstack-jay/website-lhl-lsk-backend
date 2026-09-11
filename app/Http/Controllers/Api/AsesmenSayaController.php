@@ -215,36 +215,49 @@ class AsesmenSayaController extends Controller
         }
 
         $hasilUjian = null;
-        if ($penilaian) {
+        // Cek keputusan Komite Teknis terlebih dahulu
+        $keputusanKomite = \App\Models\KomiteKeputusan::where('id_jadwal', $m->id_jadwal)
+            ->where(function ($q) use ($m, $asesi) {
+                $q->where('id_asesi', $m->id_asesi)
+                  ->orWhere('id_asesi', (string) $m->id);
+                if ($asesi) {
+                    $q->orWhere('id_asesi', $asesi->no_pendaftaran)
+                      ->orWhere('id_asesi', (string) $asesi->id);
+                }
+            })
+            ->first();
+
+        $sudahDitetapkanKomite = ($keputusanKomite && in_array($keputusanKomite->keputusan, ['K', 'BK', 'TL']))
+            || ($m->status_asesmen === 'K' || $m->status_asesmen === 'BK' || $m->status_asesmen === 'TL');
+
+        if ($sudahDitetapkanKomite) {
             $tglStr = null;
-            if ($penilaian->tgl_penilaian) {
-                $tglStr = is_string($penilaian->tgl_penilaian)
-                    ? date('d F Y', strtotime($penilaian->tgl_penilaian))
-                    : $penilaian->tgl_penilaian->format('d F Y');
+            $finalRek = $keputusanKomite ? $keputusanKomite->keputusan : $m->status_asesmen;
+            $tglSumber = $keputusanKomite?->waktu ?? $penilaian?->tgl_penilaian ?? $m->tgl_asesmen;
+            if ($tglSumber) {
+                $tglStr = is_string($tglSumber) ? date('d F Y', strtotime($tglSumber)) : $tglSumber->format('d F Y');
             }
             $hasilUjian = [
                 'sudah_dinilai' => true,
-                'nilai_akhir' => (float) $penilaian->total_skor,
-                'rekomendasi' => $penilaian->rekomendasi,
-                'rekomendasi_label' => $penilaian->rekomendasi === 'K' ? 'Kompeten' : 'Belum Kompeten',
-                'catatan' => $penilaian->catatan,
+                'nilai_akhir' => $penilaian ? (float) $penilaian->total_skor : null,
+                'rekomendasi' => $finalRek,
+                'rekomendasi_label' => match ($finalRek) {
+                    'K' => 'Kompeten',
+                    'BK' => 'Belum Kompeten',
+                    'TL' => 'Perlu Tindak Lanjut / Perbaikan',
+                    default => 'Diputuskan',
+                },
+                'catatan' => $keputusanKomite?->catatan ?? $penilaian?->catatan ?? $m->catatan_asesmen,
                 'tgl_penilaian' => $tglStr,
                 'nama_penguji' => $pengujiPenilai,
             ];
-        } elseif ($m->status_asesmen === 'K' || $m->status_asesmen === 'BK') {
-            $tglStr = null;
-            if ($m->tgl_asesmen) {
-                $tglStr = is_string($m->tgl_asesmen)
-                    ? date('d F Y', strtotime($m->tgl_asesmen))
-                    : $m->tgl_asesmen->format('d F Y');
-            }
+        } elseif ($penilaian) {
+            // Penilaian penguji ada, tapi BELUM direview / ditetapkan oleh Komite Teknis
             $hasilUjian = [
-                'sudah_dinilai' => true,
-                'nilai_akhir' => null,
-                'rekomendasi' => $m->status_asesmen,
-                'rekomendasi_label' => $m->status_asesmen === 'K' ? 'Kompeten' : 'Belum Kompeten',
-                'catatan' => $m->catatan_asesmen,
-                'tgl_penilaian' => $tglStr,
+                'sudah_dinilai' => false,
+                'menunggu_komite' => true,
+                'status_label' => 'Menunggu Review Komite Teknis',
+                'pesan' => 'Hasil penilaian dari Penguji telah masuk ke sistem dan sedang dalam tahap review oleh Tim Komite Teknis LSK.',
                 'nama_penguji' => $pengujiPenilai,
             ];
         }
@@ -369,6 +382,9 @@ class AsesmenSayaController extends Controller
                     // PUPR + biaya P: + tombol konfirmasi bayar (kombinasi idem native)
                     if ($modePupr && $biaya === 'P') {
                         $aksi = ['label' => 'Konfirmasi Pembayaran', 'url' => '/peserta/konfirmasi-pembayaran'];
+                    }
+                    if ($penilaian) {
+                        return ['Asesmen telah selesai dinilai oleh Penguji. Menunggu proses review & penetapan hasil oleh Tim Komite Teknis LSK.', 'yellow', null];
                     }
                     return ['Pendaftaran diterima dan dijadwalkan.', 'green', $aksi];
             }

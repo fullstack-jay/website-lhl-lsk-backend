@@ -18,6 +18,7 @@ class KomiteKeputusan extends Model
         'id_jadwal',
         'id_komite',
         'keputusan',
+        'catatan',
     ];
 
     protected $casts = [

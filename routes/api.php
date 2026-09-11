@@ -193,11 +193,7 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     });
 
     // Komite Teknis routes — sesuai docs/BACKEND_KOMITETEKNIS.md
-    // Komite Teknis Profil routes (User login)
-    Route::prefix('komite-teknis')->middleware('auth:sanctum')->group(function () {
-        Route::get('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
-        Route::post('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
-    });
+
 
     Route::prefix('komite')->group(function () {
         Route::get('/statistics', [\App\Http\Controllers\Api\KomiteController::class, 'statistics']);
@@ -624,3 +620,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::delete('/{id}/pendaftaran/{idSkema}', [\App\Http\Controllers\Api\AsesiBaruController::class, 'destroyPendaftaran']);
     });
 });
+// Komite Teknis Routes (accessible via /api/v1/komite-teknis/...)
+Route::prefix('komite-teknis')->middleware('auth:sanctum')->group(function () {
+    Route::get('/jadwal', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'jadwal']);
+    Route::get('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
+    Route::post('/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
+    Route::get('/hasil-asesmen', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'index']);
+    Route::post('/hasil-asesmen/{id}/rekomendasi', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'storeRekomendasi']);
+});
+

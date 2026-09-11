@@ -123,8 +123,13 @@ class PenilaianAsesiController extends Controller
             ], 404);
         }
 
-        // 2. Verifikasi asesi & pendaftaran di jadwal ini
-        $asesi = Asesi::where('no_pendaftaran', $no_pendaftaran)->first();
+        // 2. Verifikasi asesi & pendaftaran di jadwal ini (dukung format REG- maupun numerik)
+        $cleanNo = preg_replace('/[^0-9]/', '', $no_pendaftaran);
+        $asesi = Asesi::where('no_pendaftaran', $no_pendaftaran)
+            ->orWhere('no_pendaftaran', $cleanNo)
+            ->orWhere(DB::raw("REPLACE(REPLACE(no_pendaftaran, 'REG-', ''), '-', '')"), $cleanNo)
+            ->first();
+
         if (!$asesi) {
             return response()->json([
                 'success' => false,
@@ -132,8 +137,16 @@ class PenilaianAsesiController extends Controller
             ], 404);
         }
 
+        $targetNo = $asesi->no_pendaftaran;
         $asesiAsesmen = AsesiAsesmen::where('id_jadwal', $id_jadwal)
-            ->where('id_asesi', $no_pendaftaran)
+            ->where(function ($q) use ($no_pendaftaran, $cleanNo, $targetNo, $asesi) {
+                $q->where('id_asesi', $no_pendaftaran)
+                  ->orWhere('id_asesi', $cleanNo)
+                  ->orWhere('id_asesi', $targetNo);
+                if ($asesi) {
+                    $q->orWhere('id_asesi', (string) $asesi->id);
+                }
+            })
             ->first();
 
         if (!$asesiAsesmen) {
@@ -180,7 +193,7 @@ class PenilaianAsesiController extends Controller
             $penilaian = PenilaianAsesi::updateOrCreate(
                 [
                     'id_jadwal' => $id_jadwal,
-                    'no_pendaftaran' => $no_pendaftaran,
+                    'no_pendaftaran' => $targetNo,
                 ],
                 [
                     'id_asesmen' => $asesiAsesmen->id,
@@ -202,8 +215,10 @@ class PenilaianAsesiController extends Controller
             );
 
             // B. Sinkronkan status ke asesi_asesmen
+            // Sesuai alur: Hasil penilaian penguji masuk ke akun komite teknis terlebih dahulu
+            // (status_asesmen tetap 'P' / pending sampai komite teknis menetapkan keputusan)
             $asesiAsesmen->update([
-                'status_asesmen' => $hasil['rekomendasi'],
+                'status_asesmen' => 'P',
                 'id_asesor' => $idAsesor,
                 'tgl_asesmen' => now()->toDateString(),
                 'catatan_asesmen' => $validated['catatan'] ?? null,

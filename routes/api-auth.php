@@ -34,6 +34,9 @@ Route::prefix('auth')->group(function () {
 
         // Komite Teknis protected routes
         Route::get('komite-teknis/me', [Auth\KomiteTeknisAuthController::class, 'me']);
+
+        // Dashboard Komite Teknis (agregasi) — docs/BACKEND_DASHBOARD_KOMITE_TEKNIS.md
+        Route::get('komite-teknis/dashboard', [\App\Http\Controllers\Api\KomiteDashboardController::class, 'index']);
         Route::get('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
         Route::post('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
         Route::get('komite-teknis/hasil-asesmen', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'index']);

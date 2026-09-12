@@ -94,10 +94,10 @@ class KomiteProfilController extends Controller
             $keahlianList = array_values(array_filter(array_map('trim', explode(',', $komite->bid_keahlian))));
         }
 
-        // Hitung statistik
+        // Hitung statistik (kolom aktual = id_komite, bukan id_asesor)
         $keputusanCount = 0;
         try {
-            $keputusanCount = DB::table('komite_keputusan')->where('id_asesor', $komite->id)->count();
+            $keputusanCount = DB::table('komite_keputusan')->where('id_komite', (string) $komite->id)->count();
         } catch (\Throwable $e) {
         }
 

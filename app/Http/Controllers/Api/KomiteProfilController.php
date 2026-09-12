@@ -222,9 +222,20 @@ class KomiteProfilController extends Controller
      */
     public function update(Request $request): JsonResponse
     {
-        $user = $request->user();
+        // Route tanpa middleware auth:sanctum → default guard 'web' tidak membaca
+        // Bearer token, jadi minta guard sanctum secara eksplisit (pola yang sama
+        // dengan show() dan KomiteHasilAsesmenController).
+        $user = $request->user('sanctum') ?? $request->user();
         if (! $user) {
             return response()->json(['success' => false, 'message' => 'Sesi tidak valid.'], 401);
+        }
+
+        // Endpoint khusus akun level komite-teknis
+        if (! $user->isKomiteTeknis()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Akses ditolak. Halaman ini khusus untuk Komite Teknis.',
+            ], 403);
         }
 
         $komite = $this->getKomiteFromUser($user);
@@ -246,7 +257,7 @@ class KomiteProfilController extends Controller
             'email' => 'nullable|email|max:255',
             'no_hp' => 'nullable|string|max:30',
             'pendidikan_terakhir' => 'nullable|string|max:50',
-            'pekerjaan' => 'nullable|string|max:255',
+            'pekerjaan' => 'nullable|string|max:100',
             'bid_keahlian' => 'nullable|string|max:500',
             'alamat' => 'nullable|string',
             'kelurahan' => 'nullable|string|max:255',

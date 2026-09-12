@@ -305,7 +305,8 @@ class AsesmenSayaController extends Controller
             $m->status_asesmen,
             $m->id_jadwal,
             $modePupr,
-            (int) $m->id
+            (int) $m->id,
+            $penilaian
         );
 
         return [
@@ -342,7 +343,8 @@ class AsesmenSayaController extends Controller
         ?string $statusAsesmen,
         $idJadwal,
         bool $modePupr,
-        int $idAsesmen
+        int $idAsesmen,
+        ?\App\Models\PenilaianAsesi $penilaian = null
     ): array {
         // ── CASE R (ditolak) ──
         if ($status === 'R') {

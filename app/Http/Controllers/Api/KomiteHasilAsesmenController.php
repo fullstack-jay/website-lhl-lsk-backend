@@ -188,6 +188,22 @@ class KomiteHasilAsesmenController extends Controller
                 'asesi.foto',
                 'asesi.ktp',
                 'asesi.form_pendaftaran',
+                'asesi.no_ktp',
+                'asesi.pendidikan',
+                'asesi.prodi',
+                'asesi.nohp',
+                'asesi.email',
+                'asesi.tmp_lahir',
+                'asesi.tgl_lahir',
+                'asesi.jenis_kelamin',
+                'asesi.alamat',
+                'asesi.RT',
+                'asesi.RW',
+                'asesi.kelurahan',
+                'asesi.kecamatan',
+                'asesi.kota',
+                'asesi.propinsi',
+                'asesi.kodepos',
             ])
             ->orderBy('asesi_asesmen.id', 'desc');
 
@@ -425,6 +441,15 @@ class KomiteHasilAsesmenController extends Controller
                 'id_asesmen' => (int) $item->id_asesmen,
                 'no_registrasi' => $regNo ?: 'REG-20260902-0001',
                 'nama_peserta' => $item->nama_peserta ?: 'Peserta Uji',
+                'no_ktp' => $item->no_ktp,
+                'pendidikan' => $item->pendidikan,
+                'pendidikan_nama' => $item->pendidikan,
+                'prodi' => $item->prodi,
+                'nohp' => $item->nohp,
+                'email' => $item->email,
+                'tmp_lahir' => $item->tmp_lahir,
+                'tgl_lahir' => $item->tgl_lahir ? date('Y-m-d', strtotime($item->tgl_lahir)) : null,
+                'jenis_kelamin' => $item->jenis_kelamin,
                 'skema_sertifikasi' => $item->nama_skema ?: 'Sertifikasi Kompetensi',
                 'kode_skema' => $item->kode_skema ?: 'SKM/1983/00013/2/2021/1',
                 'asesor' => $asesorName,
@@ -654,6 +679,31 @@ class KomiteHasilAsesmenController extends Controller
                         'status_asesmen' => $keputusan,
                         'catatan_asesmen' => $validated['catatan'],
                     ]);
+            }
+
+            // 3. Perbarui verifikasi dokumen pada tabel asesi jika disetujui (K)
+            if ($keputusan === 'K') {
+                $cleanNo = preg_replace('/[^0-9]/', '', (string) $noPendaftaran);
+                $asesiObj = Asesi::where('no_pendaftaran', $noPendaftaran)
+                    ->orWhere('id', (string) $noPendaftaran)
+                    ->orWhere(DB::raw("REPLACE(REPLACE(no_pendaftaran, 'REG-', ''), '-', '')"), $cleanNo)
+                    ->first();
+
+                if ($asesiObj) {
+                    $currVerif = is_array($asesiObj->verifikasi_dokumen)
+                        ? $asesiObj->verifikasi_dokumen
+                        : (is_string($asesiObj->verifikasi_dokumen) ? (json_decode($asesiObj->verifikasi_dokumen, true) ?: []) : []);
+
+                    $currVerif['ijazah'] = 'terverifikasi';
+                    $currVerif['sertifikat_amdal'] = 'terverifikasi';
+                    $currVerif['bukti_keterlibatan'] = 'terverifikasi';
+                    $currVerif['dokumen_amdal'] = 'terverifikasi';
+
+                    $asesiObj->update([
+                        'verifikasi_dokumen' => $currVerif,
+                        'verifikasi' => 'V',
+                    ]);
+                }
             }
 
             DB::commit();

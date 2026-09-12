@@ -443,6 +443,23 @@ class AsesiBaruController extends Controller
             }
 
             // Step 16: record utama asesi TERAKHIR
+            // Hapus akun di tabel users
+            \App\Models\User::where(function ($q) use ($noPendaftaran, $asesi) {
+                $q->where('username', $noPendaftaran)
+                  ->orWhere('username', $asesi->no_ktp)
+                  ->orWhere('no_ktp', $asesi->no_ktp);
+                if (!empty($asesi->email)) $q->orWhere('email', $asesi->email);
+                if (!empty($asesi->nohp)) $q->orWhere('no_telp', $asesi->nohp);
+            })->delete();
+
+            // Hapus permanen (forceDelete) di tabel pendaftarans
+            \App\Models\Pendaftaran::withTrashed()->where(function ($q) use ($noPendaftaran, $asesi) {
+                $q->where('no_pendaftaran', $noPendaftaran)
+                  ->orWhere('no_ktp', $asesi->no_ktp);
+                if (!empty($asesi->email)) $q->orWhere('email', $asesi->email);
+                if (!empty($asesi->nohp)) $q->orWhere('no_hp', $asesi->nohp);
+            })->forceDelete();
+
             $asesi->delete();
 
             DB::commit();

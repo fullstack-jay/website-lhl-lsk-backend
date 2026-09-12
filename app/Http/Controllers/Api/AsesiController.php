@@ -8,6 +8,9 @@ use App\Models\MasterKeahlian;
 use App\Models\AsesiAsesmen;
 use App\Models\AsesiDoc;
 use App\Models\AsesiPembayaran;
+use App\Models\Pendaftaran;
+use App\Models\User;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
@@ -782,9 +785,25 @@ class AsesiController extends Controller
      */
     public function destroy($noPendaftaran)
     {
-        $asesi = Asesi::where('no_pendaftaran', $noPendaftaran)->first();
+        // 1. Cari asesi berdasarkan no_pendaftaran, id, atau no_ktp
+        $asesi = Asesi::where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('id', $noPendaftaran)
+            ->orWhere('no_ktp', $noPendaftaran)
+            ->first();
 
-        if (!$asesi) {
+        // 2. Jika asesi tidak ditemukan (misal sudah terhapus sebagian sebelumnya), cari juga di pendaftarans atau users
+        $pendaftaran = Pendaftaran::withTrashed()
+            ->where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('no_ktp', $noPendaftaran)
+            ->orWhere('id', $noPendaftaran)
+            ->first();
+
+        $user = User::where('username', $noPendaftaran)
+            ->orWhere('no_ktp', $noPendaftaran)
+            ->orWhere('no_induk', $noPendaftaran)
+            ->first();
+
+        if (!$asesi && !$pendaftaran && !$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'Peserta tidak ditemukan',
@@ -794,56 +813,152 @@ class AsesiController extends Controller
         try {
             DB::beginTransaction();
 
-            // Delete files
-            $filesToDelete = [];
-            if ($asesi->foto) $filesToDelete[] = 'foto_asesi/' . $asesi->foto;
-            if ($asesi->ktp) $filesToDelete[] = 'foto_asesi/' . $asesi->ktp;
-            if ($asesi->kk) $filesToDelete[] = 'foto_asesi/' . $asesi->kk;
-            if ($asesi->ijazah) $filesToDelete[] = 'foto_asesi/' . $asesi->ijazah;
-            if ($asesi->transkrip) $filesToDelete[] = 'foto_asesi/' . $asesi->transkrip;
+            // Kumpulkan seluruh identifier
+            $regNumbers = array_filter(array_unique([
+                $noPendaftaran,
+                $asesi?->no_pendaftaran,
+                $pendaftaran?->no_pendaftaran,
+                $user?->no_induk,
+            ]));
 
-            // Delete from asesi_doc (and their files)
-            $dokumen = AsesiDoc::where('id_asesi', $noPendaftaran)->get();
+            $niks = array_filter(array_unique([
+                $asesi?->no_ktp,
+                $pendaftaran?->no_ktp,
+                $user?->no_ktp,
+                (is_numeric($noPendaftaran) && strlen((string)$noPendaftaran) === 16) ? $noPendaftaran : null,
+            ]));
+
+            $emails = array_filter(array_unique([
+                $asesi?->email,
+                $pendaftaran?->email,
+                $user?->email,
+            ]));
+
+            $telepons = array_filter(array_unique([
+                $asesi?->nohp,
+                $pendaftaran?->no_hp,
+                $user?->no_telp,
+            ]));
+
+            $allIdentifiers = array_filter(array_unique(array_merge($regNumbers, $niks)));
+
+            // 1. Kumpulkan file fisik untuk dihapus
+            $filesToDelete = [];
+            if ($asesi) {
+                $kolomFiles = ['foto', 'ktp', 'kk', 'ijazah', 'transkrip', 'suket', 'cv', 'sertifikat', 'dokumen_amdal', 'bukti_keterlibatan', 'sertifikat_amdal', 'form_pendaftaran', 'sertifikat_atpa_ktpa', 'sertifikat_kompetensi_lain'];
+                foreach ($kolomFiles as $col) {
+                    if (!empty($asesi->{$col})) {
+                        $filesToDelete[] = 'foto_asesi/' . $asesi->{$col};
+                    }
+                }
+            }
+
+            // File dari asesi_doc
+            $dokumen = AsesiDoc::whereIn('id_asesi', $allIdentifiers)->get();
             foreach ($dokumen as $doc) {
                 if ($doc->file) {
                     $filesToDelete[] = 'foto_asesi/' . $doc->file;
                 }
             }
-            AsesiDoc::where('id_asesi', $noPendaftaran)->delete();
+            AsesiDoc::whereIn('id_asesi', $allIdentifiers)->delete();
 
-            // Delete from asesi_pembayaran (and their files)
-            $pembayaran = AsesiPembayaran::where('id_asesi', $noPendaftaran)->get();
-            foreach ($pembayaran as $pembayaran) {
-                if ($pembayaran->bukti_bayar) {
-                    $filesToDelete[] = 'foto_buktibayar/' . $pembayaran->bukti_bayar;
+            // File dari asesi_pembayaran
+            $pembayaran = AsesiPembayaran::whereIn('id_asesi', $allIdentifiers)->get();
+            foreach ($pembayaran as $p) {
+                if ($p->bukti_bayar) {
+                    $filesToDelete[] = 'foto_buktibayar/' . $p->bukti_bayar;
                 }
             }
-            AsesiPembayaran::where('id_asesi', $noPendaftaran)->delete();
+            AsesiPembayaran::whereIn('id_asesi', $allIdentifiers)->delete();
 
-            // Delete from asesi_asesmen
-            AsesiAsesmen::where('id_asesi', $noPendaftaran)->delete();
+            // File dari asesi_apl02doc
+            if (Schema::hasTable('asesi_apl02doc')) {
+                $apl02Docs = DB::table('asesi_apl02doc')->whereIn('id_asesi', $allIdentifiers)->get();
+                foreach ($apl02Docs as $doc) {
+                    if (!empty($doc->file)) {
+                        $filesToDelete[] = 'foto_apl02/' . $doc->file;
+                    }
+                }
+                DB::table('asesi_apl02doc')->whereIn('id_asesi', $allIdentifiers)->delete();
+            }
 
-            // Delete from asesi_apl02 and asesi_apl02doc (if exists)
-            // Add similar logic for other related tables
+            // 2. Cascade delete di tabel turunan
+            $tabelTurunan = [
+                'asesi_asesmen',
+                'asesi_apl02',
+                'asesmen_ak01',
+                'asesmen_ak03',
+                'asesmen_ia03',
+                'asesmen_ia05',
+                'asesmen_ia06',
+                'asesmen_ia08',
+                'asesmen_ia08asesor',
+                'asesmen_ia09',
+                'asesmen_ia11',
+            ];
+            foreach ($tabelTurunan as $tbl) {
+                if (Schema::hasTable($tbl)) {
+                    DB::table($tbl)->whereIn('id_asesi', $allIdentifiers)->delete();
+                }
+            }
 
-            // Hapus juga akun login di tabel users (username = no_pendaftaran atau no_ktp,
-            // level peserta/user). Tanpa ini, NIK tetap "terdaftar" walau data peserta
-            // sudah dihapus — memblokir pendaftaran ulang dengan NIK yang sama.
-            \App\Models\User::where('level', 'user')
-                ->where(function ($q) use ($noPendaftaran, $asesi) {
-                    $q->where('username', $noPendaftaran)
-                      ->orWhere('username', $asesi->no_ktp)
-                      ->orWhere('no_ktp', $asesi->no_ktp);
-                })
+            // 3. Hapus akun login di tabel users (termasuk token dan modul)
+            $usersToDelete = User::where(function ($q) use ($allIdentifiers, $emails, $telepons) {
+                $q->whereIn('username', $allIdentifiers)
+                  ->orWhereIn('no_ktp', $allIdentifiers);
+                if (!empty($emails)) {
+                    $q->orWhereIn('email', $emails);
+                }
+                if (!empty($telepons)) {
+                    $q->orWhereIn('no_telp', $telepons);
+                }
+            })->get();
+
+            foreach ($usersToDelete as $u) {
+                if (Schema::hasTable('personal_access_tokens')) {
+                    DB::table('personal_access_tokens')->where('tokenable_id', $u->username)->delete();
+                }
+                if (Schema::hasTable('users_modul')) {
+                    DB::table('users_modul')->where('id_session', $u->id_session ?? md5($u->username))->delete();
+                }
+                if (!empty($u->foto)) {
+                    $filesToDelete[] = 'foto_user/' . $u->foto;
+                }
+                $u->delete();
+            }
+
+            // 4. HAPUS BERSIH PERMANEN (forceDelete) di tabel pendaftarans
+            Pendaftaran::withTrashed()->where(function ($q) use ($regNumbers, $niks, $emails, $telepons) {
+                if (!empty($regNumbers)) {
+                    $q->orWhereIn('no_pendaftaran', $regNumbers);
+                }
+                if (!empty($niks)) {
+                    $q->orWhereIn('no_ktp', $niks);
+                }
+                if (!empty($emails)) {
+                    $q->orWhereIn('email', $emails);
+                }
+                if (!empty($telepons)) {
+                    $q->orWhereIn('no_hp', $telepons);
+                }
+            })->forceDelete();
+
+            // 5. Hapus record asesi
+            if ($asesi) {
+                $asesi->delete();
+            }
+            Asesi::whereIn('no_pendaftaran', $allIdentifiers)
+                ->orWhereIn('no_ktp', $allIdentifiers)
                 ->delete();
 
-            // Delete the asesi record
-            $asesi->delete();
-
-            // Delete physical files
-            foreach ($filesToDelete as $file) {
+            // 6. Hapus file fisik dari disk
+            foreach (array_unique($filesToDelete) as $file) {
                 if (Storage::disk('public')->exists($file)) {
                     Storage::disk('public')->delete($file);
+                }
+                $absPublic = public_path($file);
+                if (file_exists($absPublic)) {
+                    @unlink($absPublic);
                 }
             }
 
@@ -851,7 +966,7 @@ class AsesiController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Peserta beserta seluruh data terkait berhasil dihapus',
+                'message' => 'Peserta beserta seluruh data terkait berhasil dihapus bersih',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

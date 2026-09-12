@@ -164,7 +164,34 @@ class PendaftaranService
      */
     public function delete(int $id): bool
     {
-        return $this->repository->delete($id);
+        $pendaftaran = Pendaftaran::withTrashed()->find($id);
+        if (!$pendaftaran) {
+            return false;
+        }
+
+        $noPendaftaran = $pendaftaran->no_pendaftaran;
+        $noKtp = $pendaftaran->no_ktp;
+        $email = $pendaftaran->email;
+        $noHp = $pendaftaran->no_hp;
+
+        // Force delete dari tabel pendaftarans agar bersih total
+        $pendaftaran->forceDelete();
+
+        // Hapus akun user
+        User::where(function ($q) use ($noPendaftaran, $noKtp, $email, $noHp) {
+            $q->where('username', $noPendaftaran)
+              ->orWhere('username', $noKtp)
+              ->orWhere('no_ktp', $noKtp);
+            if (!empty($email)) $q->orWhere('email', $email);
+            if (!empty($noHp)) $q->orWhere('no_telp', $noHp);
+        })->delete();
+
+        // Hapus asesi jika ada
+        \App\Models\Asesi::where('no_pendaftaran', $noPendaftaran)
+            ->orWhere('no_ktp', $noKtp)
+            ->delete();
+
+        return true;
     }
 
     /**

@@ -37,6 +37,9 @@ Route::prefix('auth')->group(function () {
 
         // Dashboard Komite Teknis (agregasi) — docs/BACKEND_DASHBOARD_KOMITE_TEKNIS.md
         Route::get('komite-teknis/dashboard', [\App\Http\Controllers\Api\KomiteDashboardController::class, 'index']);
+
+        // Ubah Sandi Komite Teknis — docs/BACKEND_UBAHSANDI_KOMTEKNIS.md
+        Route::post('komite-teknis/ubah-password', [\App\Http\Controllers\Api\KomitePasswordController::class, 'ubahPassword']);
         Route::get('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'show']);
         Route::post('komite-teknis/profil', [\App\Http\Controllers\Api\KomiteProfilController::class, 'update']);
         Route::get('komite-teknis/hasil-asesmen', [\App\Http\Controllers\Api\KomiteHasilAsesmenController::class, 'index']);

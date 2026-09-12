@@ -239,10 +239,28 @@ class PesertaSkemaController extends Controller
             ->pluck('total', 'id_jadwal')
             ->all();
 
-        $jadwalTersedia = $activeJadwals->map(function ($j) use ($wilayahKeywords, $wilayahKode, $terisiCounts) {
+        $jadwalTersedia = $activeJadwals->map(function ($j) use ($wilayahMap, $wilayahKeywords, $wilayahKode, $terisiCounts) {
             $tuk = $j->tuk;
             $alamatTuk = strtolower((string) ($tuk?->alamat ?? ''));
             $wilayahTuk = (string) ($tuk?->id_wilayah ?? '');
+
+            // Deteksi wilayah TUK
+            $detectedWilKode = 'dki';
+            $detectedWilLabel = 'DKI JAKARTA';
+            foreach ($wilayahMap as $wKey => $wInfo) {
+                if (!empty($wInfo['kode']) && str_starts_with($wilayahTuk, $wInfo['kode'])) {
+                    $detectedWilKode = $wKey;
+                    $detectedWilLabel = $wInfo['label'];
+                    break;
+                }
+                foreach ($wInfo['keywords'] as $kw) {
+                    if (str_contains($alamatTuk, $kw)) {
+                        $detectedWilKode = $wKey;
+                        $detectedWilLabel = $wInfo['label'];
+                        break 2;
+                    }
+                }
+            }
 
             $isMatch = false;
             if (!empty($wilayahKode) && str_starts_with($wilayahTuk, $wilayahKode)) {
@@ -274,7 +292,8 @@ class PesertaSkemaController extends Controller
                 'tempat_asesmen' => (int) $j->tempat_asesmen,
                 'tuk_nama' => $tuk?->nama ?: 'TUK Mandiri',
                 'tuk_alamat' => $tuk?->alamat ?: 'Lokasi TUK Terakreditasi',
-                'wilayah' => 'DKI JAKARTA',
+                'wilayah_kode' => $detectedWilKode,
+                'wilayah' => $detectedWilLabel,
                 'kapasitas' => $kapasitas,
                 'kuota_terisi' => $terisi,
                 'kuota_sisa' => $kuotaSisa,

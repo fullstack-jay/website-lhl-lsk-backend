@@ -42,6 +42,9 @@ Route::prefix('auth')->group(function () {
         // Penguji protected routes
         Route::get('penguji/me', [Auth\PengujiAuthController::class, 'me']);
 
+        // Dashboard Penguji (agregasi 4 modul penugasan) — docs/BACKEND_DASHBOARD_PENGUJI.md
+        Route::get('penguji/dashboard', [\App\Http\Controllers\Api\PengujiDashboardController::class, 'index']);
+
         // Penguji Ubah Password sendiri — docs/BACKEND_LUPA_PASSWORD_PENGUJI.md Fitur A
         Route::post('penguji/ubah-password', [Auth\PengujiAuthController::class, 'ubahPassword']);
 

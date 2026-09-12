@@ -501,6 +501,7 @@ Route::prefix('event')->group(function () {
 */
 Route::prefix('jadwal')->group(function () {
     // Public routes
+    Route::get('/terkini', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'terkini']);
     Route::get('/', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'index']);
     Route::get('/statistics', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'statistics']);
     Route::get('/options', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'options']);

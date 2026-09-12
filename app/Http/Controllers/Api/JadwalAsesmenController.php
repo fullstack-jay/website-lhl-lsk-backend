@@ -94,6 +94,108 @@ class JadwalAsesmenController extends Controller
     }
 
     /**
+     * Get jadwal asesmen terkini untuk public & footer realtime
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function terkini(Request $request)
+    {
+        $limit = min((int) $request->get('limit', 8), 20);
+
+        $currentYear = (int) $request->get('tahun', date('Y'));
+
+        $query = JadwalAsesmen::with(['skema:id,judul,kode_skema,keterangan_bukti,judul_eng', 'tuk:id,nama'])
+            ->whereNotNull('tgl_asesmen');
+
+        // Prioritaskan jadwal tahun saat ini (contoh: 2026)
+        $hasCurrentYear = (clone $query)->where(function ($q) use ($currentYear) {
+            $q->where('tahun', $currentYear)
+              ->orWhereYear('tgl_asesmen', $currentYear);
+        })->exists();
+
+        if ($hasCurrentYear) {
+            $query->where(function ($q) use ($currentYear) {
+                $q->where('tahun', $currentYear)
+                  ->orWhereYear('tgl_asesmen', $currentYear);
+            });
+        }
+
+        $jadwals = $query->orderBy('tgl_asesmen', 'desc')->orderBy('id', 'desc')->get();
+
+        $indonesianMonths = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        ];
+
+        $dates = [];
+        $items = [];
+
+        foreach ($jadwals as $j) {
+            $carbon = \Carbon\Carbon::parse($j->tgl_asesmen);
+            $d = $carbon->format('d');
+            $m = $indonesianMonths[(int) $carbon->format('m')] ?? $carbon->format('F');
+            $y = $carbon->format('Y');
+            $formattedDate = $d . ' ' . $m . ' ' . $y;
+
+            if (!in_array($formattedDate, $dates) && count($dates) < $limit) {
+                $dates[] = $formattedDate;
+            }
+
+            // Tentukan kategori skema yang ramah tampilan (KTPA / ATPA / judul skema)
+            $ket = strtoupper($j->skema?->keterangan_bukti ?? '');
+            $namaKeg = $j->nama_kegiatan ?? '';
+            if (stripos($namaKeg, 'anggota') !== false) {
+                $skemaKategori = 'Anggota Tim Penyusun Amdal (ATPA)';
+            } elseif (stripos($namaKeg, 'ketua') !== false) {
+                $skemaKategori = 'Ketua Tim Penyusun AMDAL (KTPA)';
+            } elseif ($ket === 'KTPA' || stripos($j->skema?->judul_eng ?? '', 'KTPA') !== false) {
+                $skemaKategori = 'Ketua Tim Penyusun AMDAL (KTPA)';
+            } elseif ($ket === 'ATPA' || stripos($j->skema?->judul ?? '', 'ATPA') !== false) {
+                $skemaKategori = 'Anggota Tim Penyusun Amdal (ATPA)';
+            } else {
+                $skemaKategori = $j->skema?->judul ?: 'Program Sertifikasi';
+            }
+
+            // Rapikan format judul kegiatan
+            $cleanTitle = preg_replace('/\s+/', ' ', trim($namaKeg));
+            $cleanTitle = str_replace(['(', ')'], [' (', ') '], $cleanTitle);
+            $title = ucwords(strtolower(trim($cleanTitle)), " \t\r\n\f\v()-");
+            $title = preg_replace('/\(\s+/', '(', $title);
+            $title = preg_replace('/\s+\)/', ')', $title);
+            $title = trim(preg_replace('/\s+/', ' ', $title));
+            $title = str_ireplace(['amdal', 'lsk', 'lhl', 'atpa', 'ktpa'], ['AMDAL', 'LSK', 'LHL', 'ATPA', 'KTPA'], $title);
+
+            $tukNama = str_replace('Sekeretariat', 'Sekretariat', $j->tuk?->nama ?? 'Kantor Sekretariat Penaprolis');
+
+            if (count($items) < $limit) {
+                $items[] = [
+                    'id' => $j->id,
+                    'nama_kegiatan' => $title ?: ($namaKeg ?: 'Sertifikasi Kompetensi'),
+                    'skema_judul' => $j->skema?->judul,
+                    'skema_kategori' => $skemaKategori,
+                    'tuk_nama' => $tukNama,
+                    'tgl_asesmen' => $carbon->format('Y-m-d'),
+                    'formatted_date' => $formattedDate,
+                    'jam_asesmen' => $j->jam_asesmen ?: '08.00',
+                    'status' => $j->status,
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'dates' => $dates,
+                'items' => $items,
+            ],
+        ]);
+    }
+
+
+
+    /**
      * Get jadwal asesmen detail by ID
      *
      * @param int $id

@@ -83,6 +83,7 @@ class PesertaPendaftaranController extends Controller
                 'string',
                 'starts_with:data:image/png;base64,',
             ],
+            'id_jadwal' => 'nullable|integer|exists:jadwal_asesmen,id',
         ], [
             'tujuan_sertifikasi.required' => 'Tujuan sertifikasi wajib dipilih.',
             'tujuan_sertifikasi.in' => 'Tujuan sertifikasi tidak valid.',
@@ -162,6 +163,9 @@ class PesertaPendaftaranController extends Controller
                 $biaya = (int) BiayaSertifikasi::bySkema($id)->sum('nominal');
 
                 $tujuan = $request->input('tujuan_sertifikasi');
+                $idJadwal = $request->input('id_jadwal');
+                $jadwal = $idJadwal ? \App\Models\JadwalAsesmen::find($idJadwal) : null;
+
                 // 2b. INSERT pendaftaran (status/status_asesmen default 'P' oleh enum DB)
                 $asesmen = AsesiAsesmen::create([
                     'id_asesi' => $noPendaftaran,
@@ -170,6 +174,8 @@ class PesertaPendaftaranController extends Controller
                     'tujuan_lainnya' => $tujuan === 'Lainnya' ? $request->input('tujuan_lainnya') : null,
                     'tgl_daftar' => $tglDaftar,
                     'biaya' => $biaya,
+                    'id_jadwal' => $jadwal?->id,
+                    'tgl_asesmen' => $jadwal?->tgl_asesmen,
                 ]);
 
                 // 3. Sinkron unit kompetensi: DELETE semua lama → INSERT terpilih

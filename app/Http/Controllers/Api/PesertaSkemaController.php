@@ -150,7 +150,137 @@ class PesertaSkemaController extends Controller
         $pendaftaran = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
             ->where('id_skemakkni', (string) $id)
             ->where('status_asesmen', '!=', 'K')
+            ->with(['jadwal.tuk'])
             ->first();
+
+        // ── Wilayah Ujikom Peserta (dari asesi atau pendaftaran awal) ──
+        $wilUjikom = $asesi->wil_ujikom;
+        if (empty($wilUjikom)) {
+            $pendaftaranAwal = DB::table('pendaftarans')
+                ->where(function ($q) use ($asesi, $user) {
+                    if (!empty($asesi->email)) $q->orWhere('email', $asesi->email);
+                    if (!empty($user->email)) $q->orWhere('email', $user->email);
+                    if (!empty($asesi->no_ktp)) $q->orWhere('no_ktp', $asesi->no_ktp);
+                    if (!empty($user->no_ktp)) $q->orWhere('no_ktp', $user->no_ktp);
+                })
+                ->orderByDesc('id')
+                ->first();
+            if ($pendaftaranAwal && !empty($pendaftaranAwal->wil_ujikom)) {
+                $wilUjikom = $pendaftaranAwal->wil_ujikom;
+                try {
+                    $asesi->update(['wil_ujikom' => $wilUjikom]);
+                } catch (\Throwable $e) {}
+            }
+        }
+
+        // Resolusi Label Wilayah
+        $wilayahMap = [
+            'sumut' => ['label' => 'SUMATERA UTARA', 'keywords' => ['sumatera utara', 'sumut', 'medan'], 'kode' => '12'],
+            'bengkulu' => ['label' => 'BENGKULU', 'keywords' => ['bengkulu'], 'kode' => '17'],
+            'papua_barat' => ['label' => 'PAPUA BARAT', 'keywords' => ['papua barat', 'manokwari', 'sorong'], 'kode' => '92'],
+            'kalbar' => ['label' => 'KALIMANTAN BARAT', 'keywords' => ['kalimantan barat', 'kalbar', 'pontianak'], 'kode' => '61'],
+            'dki' => ['label' => 'DKI JAKARTA', 'keywords' => ['dki jakarta', 'jakarta'], 'kode' => '31'],
+            'banten' => ['label' => 'BANTEN', 'keywords' => ['banten', 'tangerang', 'serang', 'cilegon'], 'kode' => '36'],
+            'jabar' => ['label' => 'JAWA BARAT', 'keywords' => ['jawa barat', 'jabar', 'bandung', 'bogor', 'bekasi', 'depok'], 'kode' => '32'],
+            'sulsel' => ['label' => 'SULAWESI SELATAN', 'keywords' => ['sulawesi selatan', 'sulsel', 'makassar'], 'kode' => '73'],
+            'sultra' => ['label' => 'SULAWESI TENGGARA', 'keywords' => ['sulawesi tenggara', 'sultra', 'kendari'], 'kode' => '74'],
+            'jatim' => ['label' => 'JAWA TIMUR', 'keywords' => ['jawa timur', 'jatim', 'surabaya', 'malang'], 'kode' => '35'],
+        ];
+
+        $cleanWilKey = strtolower(trim((string) $wilUjikom));
+        $wilayahLabel = 'DKI JAKARTA';
+        $wilayahKeywords = ['dki jakarta', 'jakarta'];
+        $wilayahKode = '31';
+
+        if (isset($wilayahMap[$cleanWilKey])) {
+            $wilayahLabel = $wilayahMap[$cleanWilKey]['label'];
+            $wilayahKeywords = $wilayahMap[$cleanWilKey]['keywords'];
+            $wilayahKode = $wilayahMap[$cleanWilKey]['kode'];
+        } elseif (!empty($cleanWilKey)) {
+            $foundByPrefix = false;
+            foreach ($wilayahMap as $k => $info) {
+                if (str_starts_with($cleanWilKey, $info['kode'])) {
+                    $wilayahLabel = $info['label'];
+                    $wilayahKeywords = $info['keywords'];
+                    $wilayahKode = $info['kode'];
+                    $foundByPrefix = true;
+                    break;
+                }
+            }
+            if (!$foundByPrefix) {
+                foreach ($wilayahMap as $k => $info) {
+                    if (str_contains(strtolower($info['label']), $cleanWilKey)) {
+                        $wilayahLabel = $info['label'];
+                        $wilayahKeywords = $info['keywords'];
+                        $wilayahKode = $info['kode'];
+                        $foundByPrefix = true;
+                        break;
+                    }
+                }
+            }
+            if (!$foundByPrefix) {
+                $wilayahLabel = strtoupper($wilUjikom);
+                $wilayahKeywords = [strtolower($wilUjikom)];
+            }
+        }
+
+        // ── Query Jadwal Uji Kompetensi yang Tersedia untuk Skema Ini ──
+        $activeJadwals = \App\Models\JadwalAsesmen::with('tuk')
+            ->where('id_skemakkni', $id)
+            ->where('status', '!=', 'Selesai')
+            ->orderBy('tgl_asesmen')
+            ->get();
+
+        $jadwalIds = $activeJadwals->pluck('id')->all();
+        $terisiCounts = DB::table('asesi_asesmen')
+            ->whereIn('id_jadwal', $jadwalIds)
+            ->select('id_jadwal', DB::raw('count(*) as total'))
+            ->groupBy('id_jadwal')
+            ->pluck('total', 'id_jadwal')
+            ->all();
+
+        $jadwalTersedia = $activeJadwals->map(function ($j) use ($wilayahKeywords, $wilayahKode, $terisiCounts) {
+            $tuk = $j->tuk;
+            $alamatTuk = strtolower((string) ($tuk?->alamat ?? ''));
+            $wilayahTuk = (string) ($tuk?->id_wilayah ?? '');
+
+            $isMatch = false;
+            if (!empty($wilayahKode) && str_starts_with($wilayahTuk, $wilayahKode)) {
+                $isMatch = true;
+            } else {
+                foreach ($wilayahKeywords as $kw) {
+                    if (str_contains($alamatTuk, $kw)) {
+                        $isMatch = true;
+                        break;
+                    }
+                }
+            }
+
+            $kapasitas = (int) ($j->kapasitas ?: 20);
+            $terisi = (int) ($terisiCounts[$j->id] ?? 0);
+            $kuotaSisa = max(0, $kapasitas - $terisi);
+
+            $tglAwal = $j->tgl_asesmen ? \Carbon\Carbon::parse($j->tgl_asesmen)->locale('id')->translatedFormat('d F Y') : '-';
+            $tglAkhir = $j->tgl_asesmen_akhir ? \Carbon\Carbon::parse($j->tgl_asesmen_akhir)->locale('id')->translatedFormat('d F Y') : null;
+            $tglFormatted = ($tglAkhir && $tglAkhir !== $tglAwal) ? "{$tglAwal} - {$tglAkhir}" : $tglAwal;
+
+            return [
+                'id' => (int) $j->id,
+                'nama_kegiatan' => $j->nama_kegiatan ?: 'Uji Kompetensi ' . ($j->skema?->judul ?? ''),
+                'tgl_asesmen' => $j->tgl_asesmen ? (is_string($j->tgl_asesmen) ? $j->tgl_asesmen : $j->tgl_asesmen->format('Y-m-d')) : null,
+                'tgl_asesmen_akhir' => $j->tgl_asesmen_akhir ? (is_string($j->tgl_asesmen_akhir) ? $j->tgl_asesmen_akhir : $j->tgl_asesmen_akhir->format('Y-m-d')) : null,
+                'tgl_formatted' => $tglFormatted,
+                'jam_asesmen' => $j->jam_asesmen ?: '08.00 WIB',
+                'tempat_asesmen' => (int) $j->tempat_asesmen,
+                'tuk_nama' => $tuk?->nama ?: 'TUK Mandiri',
+                'tuk_alamat' => $tuk?->alamat ?: 'Lokasi TUK Terakreditasi',
+                'wilayah' => 'DKI JAKARTA',
+                'kapasitas' => $kapasitas,
+                'kuota_terisi' => $terisi,
+                'kuota_sisa' => $kuotaSisa,
+                'sesuai_wilayah' => $isMatch,
+            ];
+        })->values();
 
         // ── Dokumen Persyaratan Profil (Syarat Pokok & Tambahan Sinkron dari Profil) ──
         $baseUrl = url('/');
@@ -275,6 +405,11 @@ class PesertaSkemaController extends Controller
                     'jenjang' => $skema->jenjang !== null ? (int) $skema->jenjang : null,
                     'file_url' => $skema->file ? asset('foto_skema/'.$skema->file) : null,
                 ],
+                'wilayah_peserta' => [
+                    'kode' => $wilUjikom,
+                    'label' => $wilayahLabel,
+                ],
+                'jadwal_tersedia' => $jadwalTersedia,
                 'dokumen_persyaratan_profil' => $dokumenPersyaratanProfil,
                 'persyaratan' => $persyaratan,
                 'biaya' => $biaya,
@@ -292,6 +427,18 @@ class PesertaSkemaController extends Controller
                     'biaya' => (int) ($pendaftaran->biaya ?? 0),
                     'status' => $pendaftaran->status,
                     'status_asesmen' => $pendaftaran->status_asesmen,
+                    'id_jadwal' => $pendaftaran->id_jadwal ? (int) $pendaftaran->id_jadwal : null,
+                    'tgl_asesmen' => $pendaftaran->tgl_asesmen?->format('Y-m-d') ?: ($pendaftaran->jadwal?->tgl_asesmen?->format('Y-m-d')),
+                    'jadwal' => $pendaftaran->jadwal ? [
+                        'id' => (int) $pendaftaran->jadwal->id,
+                        'nama_kegiatan' => $pendaftaran->jadwal->nama_kegiatan,
+                        'tgl_asesmen' => $pendaftaran->jadwal->tgl_asesmen?->format('Y-m-d'),
+                        'tgl_asesmen_akhir' => $pendaftaran->jadwal->tgl_asesmen_akhir?->format('Y-m-d'),
+                        'tgl_formatted' => $pendaftaran->jadwal->tgl_asesmen ? \Carbon\Carbon::parse($pendaftaran->jadwal->tgl_asesmen)->locale('id')->translatedFormat('d F Y') : '-',
+                        'jam_asesmen' => $pendaftaran->jadwal->jam_asesmen,
+                        'tuk_nama' => $pendaftaran->jadwal->tuk?->nama,
+                        'tuk_alamat' => $pendaftaran->jadwal->tuk?->alamat,
+                    ] : null,
                 ] : null,
                 'tahun_doc_range' => $tahunDocRange,
                 'upload_max_mb' => $this->uploadMaxMb(),

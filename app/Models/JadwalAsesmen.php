@@ -122,6 +122,16 @@ class JadwalAsesmen extends Model
     }
 
     /**
+     * Relationship penugasan komite teknis melalui tabel jadwal_komite
+     */
+    public function komiteTeknis(): BelongsToMany
+    {
+        return $this->belongsToMany(Komite::class, 'jadwal_komite', 'id_jadwal', 'id_komite')
+            ->withPivot('peran')
+            ->withTimestamps();
+    }
+
+    /**
      * Relationship to SkemaCeklisvertuk
      */
     public function verifikasiTuk(): HasMany

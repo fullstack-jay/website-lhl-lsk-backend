@@ -84,6 +84,16 @@ class Komite extends Model
             ->withPivot('keputusan', 'waktu');
     }
 
+    /**
+     * Relationship penugasan komite teknis ke jadwal asesmen via jadwal_komite
+     */
+    public function jadwalPenugasan(): BelongsToMany
+    {
+        return $this->belongsToMany(JadwalAsesmen::class, 'jadwal_komite', 'id_komite', 'id_jadwal')
+            ->withPivot('peran')
+            ->withTimestamps();
+    }
+
     // 
     // Logika modul Komite (mirror Penguji, sesuai docs/BACKEND_KOMITETEKNIS.md)
     // 

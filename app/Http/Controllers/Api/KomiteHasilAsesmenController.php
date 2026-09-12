@@ -25,9 +25,33 @@ class KomiteHasilAsesmenController extends Controller
      * GET /api/v1/komite-teknis/jadwal
      * Mengambil daftar jadwal asesmen untuk halaman Komite Teknis
      */
+    /**
+     * Resolve authenticated komite model from request token / session
+     */
+    private function resolveKomite(Request $request): ?Komite
+    {
+        $user = $request->user('sanctum') ?? $request->user();
+        if (!$user) {
+            return null;
+        }
+
+        return Komite::where(function ($q) use ($user) {
+            $q->where('no_ktp', $user->username)
+                ->orWhere('no_hp', $user->username)
+                ->orWhere('no_induk', $user->username)
+                ->orWhere('email', $user->username);
+            if (!empty($user->no_ktp) && $user->no_ktp !== $user->username) {
+                $q->orWhere('no_ktp', $user->no_ktp);
+            }
+        })->first();
+    }
+
     public function jadwal(Request $request): JsonResponse
     {
-        $jadwalList = DB::table('jadwal_asesmen')
+        $user = $request->user('sanctum') ?? $request->user();
+        $komite = $this->resolveKomite($request);
+
+        $query = DB::table('jadwal_asesmen')
             ->leftJoin('skema_kkni', 'jadwal_asesmen.id_skemakkni', '=', 'skema_kkni.id')
             ->select([
                 'jadwal_asesmen.id',
@@ -42,9 +66,24 @@ class KomiteHasilAsesmenController extends Controller
                 'jadwal_asesmen.status',
                 'skema_kkni.judul as judul_skema',
                 'skema_kkni.kode_skema',
-            ])
-            ->orderBy('jadwal_asesmen.id', 'desc')
-            ->get();
+            ]);
+
+        // Isolasi jadwal: Hanya jadwal yang ditugaskan ke personil komite teknis bersangkutan
+        if ($komite) {
+            $assignedJadwalIds = DB::table('jadwal_komite')
+                ->where('id_komite', $komite->id)
+                ->pluck('id_jadwal')
+                ->toArray();
+
+            $query->whereIn('jadwal_asesmen.id', $assignedJadwalIds);
+        } elseif ($user && ($user->level === 'admin' || (method_exists($user, 'isAdmin') && $user->isAdmin()))) {
+            // Admin dapat melihat seluruh jadwal
+        } else {
+            // Komite yang tidak terdaftar / belum ditugaskan tidak melihat jadwal
+            $query->whereRaw('1 = 0');
+        }
+
+        $jadwalList = $query->orderBy('jadwal_asesmen.id', 'desc')->get();
 
         $data = [];
         foreach ($jadwalList as $j) {
@@ -85,6 +124,10 @@ class KomiteHasilAsesmenController extends Controller
                 'max_asesi' => $j->kapasitas ?: 15,
                 'jumlah_asesi' => $asesiCount ?: 1,
                 'asesor' => $asesorNames,
+                'peran_komite' => $komite ? (DB::table('jadwal_komite')
+                    ->where('id_jadwal', $j->id)
+                    ->where('id_komite', $komite->id)
+                    ->value('peran') ?? 'Anggota') : 'Anggota',
                 'status' => $status,
                 'raw_status' => $rawStatus,
             ];
@@ -108,8 +151,27 @@ class KomiteHasilAsesmenController extends Controller
         $skemaFilter = $request->query('skema', '');
         $jadwalIdFilter = $request->query('id_jadwal', null);
 
+        $user = $request->user('sanctum') ?? $request->user();
+        $komite = $this->resolveKomite($request);
+
         // Sumber kebenaran utama peserta jadwal adalah tabel asesi_asesmen
-        $query = DB::table('asesi_asesmen')
+        $query = DB::table('asesi_asesmen');
+
+        // Isolasi peserta: Hanya dari jadwal yang ditugaskan ke komite ini
+        if ($komite) {
+            $assignedJadwalIds = DB::table('jadwal_komite')
+                ->where('id_komite', $komite->id)
+                ->pluck('id_jadwal')
+                ->toArray();
+
+            $query->whereIn('asesi_asesmen.id_jadwal', $assignedJadwalIds);
+        } elseif ($user && ($user->level === 'admin' || (method_exists($user, 'isAdmin') && $user->isAdmin()))) {
+            // Admin can view all
+        } else {
+            $query->whereRaw('1 = 0');
+        }
+
+        $query
             ->leftJoin('asesi', function ($join) {
                 $join->on('asesi_asesmen.id_asesi', '=', 'asesi.no_pendaftaran')
                     ->orWhere('asesi_asesmen.id_asesi', '=', 'asesi.id')

@@ -26,6 +26,7 @@ class JadwalAsesmenController extends Controller
             'sumberAnggaran:id,jenis_anggaran',
             'pemberiAnggaran:id,nama_instansi',
             'asesor:id,nama,gelar_depan,gelar_blk,no_lisensi',
+            'komiteTeknis:id,nama,gelar_depan,gelar_blk,jabatan_komite,no_induk',
         ]);
 
         // Search
@@ -209,6 +210,7 @@ class JadwalAsesmenController extends Controller
             'sumberAnggaran:id,jenis_anggaran',
             'pemberiAnggaran:id,nama_instansi',
             'asesor:id,nama,gelar_depan,gelar_blk,no_lisensi',
+            'komiteTeknis:id,nama,gelar_depan,gelar_blk,jabatan_komite,no_induk',
             'komite:id,nama,gelar_depan,gelar_blk',
         ])->find($id);
 
@@ -617,6 +619,17 @@ class JadwalAsesmenController extends Controller
                     'gelar_depan' => $asesor->gelar_depan,
                     'gelar_blk' => $asesor->gelar_blk,
                     'no_lisensi' => $asesor->no_lisensi,
+                ];
+            }) : [],
+            'komite_teknis' => $jadwal->komiteTeknis ? $jadwal->komiteTeknis->map(function ($komite) {
+                return [
+                    'id' => $komite->id,
+                    'nama' => $komite->nama,
+                    'gelar_depan' => $komite->gelar_depan,
+                    'gelar_blk' => $komite->gelar_blk,
+                    'jabatan_komite' => $komite->jabatan_komite,
+                    'peran' => $komite->pivot->peran ?? $komite->jabatan_komite ?? 'Anggota',
+                    'no_induk' => $komite->no_induk,
                 ];
             }) : [],
             'asesor_mkva1' => $jadwal->asesor_mkva1 ? (int)$jadwal->asesor_mkva1 : null,
@@ -1029,6 +1042,166 @@ class JadwalAsesmenController extends Controller
             'message' => 'Penguji berhasil dilepas dari jadwal',
         ]);
     }
+    /**
+     * Get komite teknis assigned to schedule
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getKomite($id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $items = $jadwal->komiteTeknis()->select([
+            'komite.id',
+            'komite.nama',
+            'komite.gelar_depan',
+            'komite.gelar_blk',
+            'komite.jabatan_komite',
+            'komite.no_induk',
+            'komite.no_hp',
+            'komite.email',
+        ])->get()->map(function ($k) {
+            return [
+                'id' => $k->id,
+                'nama' => $k->nama,
+                'gelar_depan' => $k->gelar_depan,
+                'gelar_blk' => $k->gelar_blk,
+                'jabatan_komite' => $k->jabatan_komite,
+                'peran' => $k->pivot->peran ?? $k->jabatan_komite ?? 'Anggota',
+                'no_induk' => $k->no_induk,
+                'no_hp' => $k->no_hp,
+                'email' => $k->email,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Get available komite teknis (not assigned to this schedule yet)
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getKomiteTersedia(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+        $search = $request->query('search', '');
+
+        $assignedIds = \DB::table('jadwal_komite')
+            ->where('id_jadwal', $id)
+            ->pluck('id_komite');
+
+        $query = Komite::whereNotIn('id', $assignedIds)->where('aktif', 'Y');
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%")
+                  ->orWhere('no_induk', 'like', "%{$search}%")
+                  ->orWhere('jabatan_komite', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $query->orderBy('nama', 'asc')->get([
+            'id', 'nama', 'gelar_depan', 'gelar_blk', 'jabatan_komite', 'no_induk', 'no_hp', 'email',
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $items,
+        ]);
+    }
+
+    /**
+     * Assign komite teknis to schedule
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function assignKomite(Request $request, $id)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $validator = Validator::make($request->all(), [
+            'id_komite' => 'required|integer|exists:komite,id',
+            'peran' => 'nullable|string|max:50',
+        ], [
+            'id_komite.required' => 'Komite teknis wajib dipilih',
+            'id_komite.exists' => 'Komite teknis tidak valid',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $exists = \DB::table('jadwal_komite')
+            ->where('id_jadwal', $id)
+            ->where('id_komite', $request->id_komite)
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Komite teknis sudah ditugaskan pada jadwal ini',
+            ], 400);
+        }
+
+        $komitePersonil = Komite::find($request->id_komite);
+        $peran = $request->peran ?: ($komitePersonil?->jabatan_komite ?: 'Anggota');
+
+        \DB::table('jadwal_komite')->insert([
+            'id_jadwal' => $id,
+            'id_komite' => $request->id_komite,
+            'peran' => $peran,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Komite teknis berhasil ditugaskan ke jadwal',
+        ]);
+    }
+
+    /**
+     * Unassign komite teknis from schedule
+     *
+     * @param int $id
+     * @param int $idKomite
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function unassignKomite($id, $idKomite)
+    {
+        $jadwal = JadwalAsesmen::findOrFail($id);
+
+        $deleted = \DB::table('jadwal_komite')
+            ->where('id_jadwal', $id)
+            ->where('id_komite', $idKomite)
+            ->delete();
+
+        if (!$deleted) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Komite teknis tidak ditemukan pada jadwal ini',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Komite teknis berhasil dilepas dari jadwal',
+        ]);
+    }
+
 
     /**
      * Get documents for a schedule

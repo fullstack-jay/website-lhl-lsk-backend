@@ -553,6 +553,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/{id}/penguji', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignPenguji']);
         Route::post('/{id}/peninjau-ia11', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'updatePeninjauIa11']);
         Route::delete('/{id}/penguji/{idAsesor}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignPenguji']);
+
+        // Komite Teknis penugasan ke jadwal
+        Route::get('/{id}/komite', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getKomite']);
+        Route::get('/{id}/komite-tersedia', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getKomiteTersedia']);
+        Route::post('/{id}/komite', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignKomite']);
+        Route::delete('/{id}/komite/{idKomite}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignKomite']);
         Route::get('/{id}/mkva', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'getMkva']);
         Route::post('/{id}/mkva', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'assignMkva']);
         Route::delete('/{id}/mkva/{posisi}', [\App\Http\Controllers\Api\JadwalAsesmenController::class, 'unassignMkva']);

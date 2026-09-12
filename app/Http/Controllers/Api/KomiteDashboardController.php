@@ -77,13 +77,20 @@ class KomiteDashboardController extends Controller
         // STATISTIK (3 kartu)
         // ════════════════════════════════════════════════════════════
 
-        // Kartu 1 — Jadwal Aktif: idem jumlah baris GET /komite-teknis/jadwal
-        // (endpoint itu menampilkan SEMUA jadwal — tanpa filter — sehingga
-        //  count di sini juga tanpa filter agar angka konsisten saat diklik)
-        $jadwalCount = DB::table('jadwal_asesmen')->count();
+        // Ambil ID jadwal yang ditugaskan kepada komite ini
+        $assignedJadwalIds = DB::table('jadwal_komite')
+            ->where('id_komite', $komite->id)
+            ->pluck('id_jadwal')
+            ->toArray();
 
-        // Kartu 2 — Skema Kompetensi: DISTINCT skema dari himpunan jadwal yang sama
+        // Kartu 1 — Jadwal Aktif: hanya jadwal yang ditugaskan ke komite ini (konsisten dgn GET /komite-teknis/jadwal)
+        $jadwalCount = DB::table('jadwal_asesmen')
+            ->whereIn('id', $assignedJadwalIds)
+            ->count();
+
+        // Kartu 2 — Skema Kompetensi: DISTINCT skema dari jadwal yang ditugaskan
         $skemaCount = DB::table('jadwal_asesmen')
+            ->whereIn('id', $assignedJadwalIds)
             ->whereNotNull('id_skemakkni')
             ->where('id_skemakkni', '!=', '')
             ->distinct()
@@ -100,6 +107,7 @@ class KomiteDashboardController extends Controller
         // (join + dedup + urutan cek K → TL → BK sama persis, blok counts §index)
         // ════════════════════════════════════════════════════════════
         $rows = DB::table('asesi_asesmen')
+            ->whereIn('asesi_asesmen.id_jadwal', $assignedJadwalIds)
             ->leftJoin('penilaian_asesi', function ($join) {
                 $join->on('asesi_asesmen.id', '=', 'penilaian_asesi.id_asesmen')
                     ->orWhere(function ($q) {

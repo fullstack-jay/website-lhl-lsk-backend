@@ -139,7 +139,7 @@ class AdminKewajibanPesertaController extends Controller
             'belum_upload' => max(0, count($allAsesi) - $allPem->whereIn('status', ['SUDAH_UPLOAD', 'DISETUJUI', 'PERLU_PERBAIKAN', 'DITOLAK'])->count()),
         ];
 
-                $page = max(1, (int) ($request->query('page') ?: 1));
+        $page = max(1, (int) ($request->query('page') ?: 1));
         $perPage = max(1, (int) ($request->query('per_page') ?: 10));
         $total = count($transformed);
         $lastPage = max(1, (int) ceil($total / $perPage));
@@ -211,7 +211,7 @@ class AdminKewajibanPesertaController extends Controller
         }
 
         // 3. Baris Logbook AMDAL real
-        $logbookRows =  DB::table('asesi_logbook')
+        $logbookRows = DB::table('asesi_logbook')
             ->where('id_asesi', $asesi->no_pendaftaran)
             ->where('tahun', $tahun)
             ->orderBy('id', 'asc')
@@ -304,7 +304,126 @@ class AdminKewajibanPesertaController extends Controller
                 'pkb_rows' => $pkbRows,
                 'logbook_rows' => $logbookRows,
                 'evaluasi_rows' => $evaluasiRows,
+                'pengesahan_pkb' => [
+                    'ttd_rusdani' => $pem ? $pem->ttd_rusdani : null,
+                    'tgl_ttd_rusdani' => $pem ? $pem->tgl_ttd_rusdani : null,
+                    'ttd_nina' => $pem ? $pem->ttd_nina : null,
+                    'tgl_ttd_nina' => $pem ? $pem->tgl_ttd_nina : null,
+                    'status_pkb' => $pem ? ($pem->status_pkb ?: 'BELUM') : 'BELUM',
+                    'catatan_pkb' => $pem ? $pem->catatan_pkb : null,
+                ],
+                'master_ttd' => DB::table('lsk_master_ttd')->get()->keyBy('kode'),
             ],
+        ]);
+    }
+
+    /**
+     * GET /api/v1/admin/kewajiban-peserta/master-ttd
+     */
+    public function getMasterTtd(): JsonResponse
+    {
+        $records = DB::table('lsk_master_ttd')->get()->keyBy('kode');
+        return response()->json([
+            'success' => true,
+            'data' => $records,
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/kewajiban-peserta/master-ttd
+     */
+    public function updateMasterTtd(Request $request): JsonResponse
+    {
+        $kode = $request->input('kode');
+        if (!in_array($kode, ['rusdani', 'nina'])) {
+            return response()->json(['success' => false, 'message' => 'Kode tidak valid'], 422);
+        }
+
+        $updates = ['updated_at' => now()];
+        if ($request->has('ttd_image')) {
+            $updates['ttd_image'] = $request->input('ttd_image');
+        }
+        if ($request->has('nohp')) {
+            $updates['nohp'] = $request->input('nohp');
+        }
+
+        DB::table('lsk_master_ttd')->where('kode', $kode)->update($updates);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Tanda tangan master ' . ucfirst($kode) . ' berhasil disimpan.',
+            'data' => DB::table('lsk_master_ttd')->where('kode', $kode)->first(),
+        ]);
+    }
+
+    /**
+     * POST /api/v1/admin/kewajiban-peserta/pemeliharaan/{id}/verifikasi-pkb
+     */
+    public function verifikasiPkb(Request $request, $id): JsonResponse
+    {
+        $tahunReq = (int) ($request->input('tahun') ?: now()->year);
+        $record = DB::table('asesi_pemeliharaan')->where('id', $id)->first();
+        if (!$record) {
+            $record = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $id)
+                ->where('tahun', $tahunReq)
+                ->first();
+        }
+        if (!$record) {
+            $record = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $id)
+                ->orderBy('tahun', 'desc')
+                ->first();
+        }
+        if (!$record) {
+            $asesi = DB::table('asesi')->where('no_pendaftaran', $id)->orWhere('id', $id)->first();
+            if ($asesi) {
+                $newId = DB::table('asesi_pemeliharaan')->insertGetId([
+                    'id_asesi' => $asesi->no_pendaftaran,
+                    'sertifikat_no' => $asesi->no_sertifikat ?: 'SERT/' . $tahunReq . '/' . ($asesi->jenis_sertifikat ?: 'ATPA') . '/0001',
+                    'tahun' => $tahunReq,
+                    'status' => 'BELUM',
+                    'waktu' => now(),
+                ]);
+                $record = DB::table('asesi_pemeliharaan')->where('id', $newId)->first();
+            }
+        }
+
+        if (!$record) {
+            return response()->json(['success' => false, 'message' => 'Data pemeliharaan tidak ditemukan'], 404);
+        }
+
+        $statusPkb = $request->input('status_pkb', 'DISETUJUI');
+        $updates = [
+            'status_pkb' => $statusPkb,
+            'catatan_pkb' => $request->input('catatan_pkb'),
+        ];
+
+        if ($request->has('ttd_rusdani')) {
+            $updates['ttd_rusdani'] = $request->input('ttd_rusdani');
+            $updates['tgl_ttd_rusdani'] = $request->input('tgl_ttd_rusdani', date('d/m/Y'));
+        }
+        if ($request->has('ttd_nina')) {
+            $updates['ttd_nina'] = $request->input('ttd_nina');
+            $updates['tgl_ttd_nina'] = $request->input('tgl_ttd_nina', date('d/m/Y'));
+        }
+
+        DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updates);
+
+        // Notifikasi ke peserta
+        DB::table('asesi_notifikasi')->insert([
+            'id_asesi' => $record->id_asesi,
+            'tipe' => $statusPkb === 'DISETUJUI' ? 'success' : 'warning',
+            'judul' => 'Pengesahan Form PKB Tahun ' . $record->tahun,
+            'pesan' => 'Formulir PKB Anda telah diverifikasi dan disahkan oleh Ketua LSK dan Kabid Sertifikasi.',
+            'kategori' => 'pemeliharaan',
+            'dibaca' => 0,
+            'waktu' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Form PKB berhasil disahkan dan ditandatangani oleh Rusdani Sosiawan & Nina Wulansari.',
         ]);
     }
 
@@ -328,12 +447,35 @@ class AdminKewajibanPesertaController extends Controller
         }
 
         // Cari pemeliharaan berdasarkan ID atau no_pendaftaran
+        $tahunReq = (int) ($request->input('tahun') ?: now()->year);
         $record = DB::table('asesi_pemeliharaan')->where('id', $id)->first();
+        if (!$record) {
+            $record = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $id)
+                ->where('tahun', $tahunReq)
+                ->first();
+        }
         if (!$record) {
             $record = DB::table('asesi_pemeliharaan')
                 ->where('id_asesi', $id)
                 ->orderBy('tahun', 'desc')
                 ->first();
+        }
+
+        if (!$record) {
+            $asesi = DB::table('asesi')->where('no_pendaftaran', $id)->orWhere('id', $id)->first();
+            if ($asesi) {
+                $newId = DB::table('asesi_pemeliharaan')->insertGetId([
+                    'id_asesi' => $asesi->no_pendaftaran,
+                    'sertifikat_no' => $asesi->no_sertifikat ?: 'SERT/' . $tahunReq . '/' . ($asesi->jenis_sertifikat ?: 'ATPA') . '/0001',
+                    'tahun' => $tahunReq,
+                    'status' => $request->status,
+                    'catatan_evaluator' => $request->catatan,
+                    'tanggal_evaluasi' => now(),
+                    'waktu' => now(),
+                ]);
+                $record = DB::table('asesi_pemeliharaan')->where('id', $newId)->first();
+            }
         }
 
         if (!$record) {

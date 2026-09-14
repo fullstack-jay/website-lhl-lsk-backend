@@ -620,9 +620,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Verifikasi Sertifikat Peserta (ATPA / KTPA)
     // Monitoring & Verifikasi Kewajiban Peserta (ATPA / KTPA)
     Route::prefix('kewajiban-peserta')->group(function () {
+        Route::get('/master-ttd', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'getMasterTtd']);
+        Route::post('/master-ttd', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'updateMasterTtd']);
         Route::get('/', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'index']);
         Route::get('/{noPendaftaran}', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'show']);
         Route::post('/pemeliharaan/{id}/verifikasi', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPemeliharaan']);
+        Route::post('/pemeliharaan/{id}/verifikasi-pkb', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPkb']);
     });
 
     Route::prefix('peserta-verifikasi-sertifikat')->group(function () {

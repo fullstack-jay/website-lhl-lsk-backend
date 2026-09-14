@@ -244,6 +244,7 @@ class KewajibanPesertaController extends Controller
             ->get([
                 'p.id', 'p.tahun', 'p.status', 'p.file_penunjukan', 'p.file_logbook',
                 'p.file_cover_tim', 'p.file_ka_andal',
+                'p.ttd_rusdani', 'p.tgl_ttd_rusdani', 'p.ttd_nina', 'p.tgl_ttd_nina', 'p.status_pkb', 'p.catatan_pkb',
                 'pk.id as pkb_id', 'pk.bentuk_kegiatan', 'pk.bentuk_lainnya', 'pk.tema',
                 'pk.penyelenggara', 'pk.lokasi', 'pk.waktu as pkb_waktu',
                 'pk.deskripsi_singkat', 'pk.file_bukti',

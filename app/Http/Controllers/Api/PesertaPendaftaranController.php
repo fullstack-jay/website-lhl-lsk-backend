@@ -72,6 +72,28 @@ class PesertaPendaftaranController extends Controller
             return response()->json(['success' => false, 'message' => 'Skema tidak ditemukan'], 404);
         }
 
+        // ── Guard Sertifikat Aktif: Jika peserta sudah memiliki sertifikat aktif valid untuk skema ini ──
+        if ($asesi->status_sertifikat === 'VALID') {
+            $jenis = strtoupper(trim($asesi->jenis_sertifikat ?? ''));
+            $judul = strtoupper((string) ($skema->judul ?? ''));
+            $kode = strtoupper((string) ($skema->kode_skema ?? ''));
+
+            $isMatch = false;
+            if ($jenis === 'ATPA') {
+                $isMatch = str_contains($judul, 'ATPA') || str_contains($judul, 'ANGGOTA TIM') || str_contains($kode, 'ATPA');
+            } elseif ($jenis === 'KTPA') {
+                $isMatch = str_contains($judul, 'KTPA') || str_contains($judul, 'KETUA TIM') || str_contains($kode, 'KTPA')
+                    || str_contains($judul, 'ATPA') || str_contains($judul, 'ANGGOTA TIM');
+            }
+
+            if ($isMatch) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Anda sudah memiliki sertifikat aktif {$jenis} yang terverifikasi valid" . ($asesi->no_sertifikat ? " (No: {$asesi->no_sertifikat})" : "") . ". Anda tidak dapat mendaftar uji kompetensi untuk skema ini.",
+                ], 422);
+            }
+        }
+
         // ── Validasi FR-APL-01 ──
         $validator = Validator::make($request->all(), [
             'tujuan_sertifikasi' => 'required|in:Sertifikasi,Sertifikasi Ulang,PKT,RPL,Lainnya',

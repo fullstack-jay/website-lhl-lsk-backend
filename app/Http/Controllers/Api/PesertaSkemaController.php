@@ -35,6 +35,31 @@ class PesertaSkemaController extends Controller
 {
     public function __construct(private PesertaGateService $gate) {}
 
+    /**
+     * Cek apakah skema cocok dengan jenis sertifikat aktif peserta (ATPA / KTPA).
+     */
+    private function skemaCocokSertifikatAktif($skema, ?string $jenis): bool
+    {
+        if (empty($jenis)) {
+            return false;
+        }
+
+        $jenisClean = strtoupper(trim($jenis));
+        $judul = strtoupper((string) ($skema->judul ?? ''));
+        $kode = strtoupper((string) ($skema->kode_skema ?? ''));
+
+        if ($jenisClean === 'ATPA') {
+            return str_contains($judul, 'ATPA') || str_contains($judul, 'ANGGOTA TIM') || str_contains($kode, 'ATPA');
+        }
+
+        if ($jenisClean === 'KTPA') {
+            return str_contains($judul, 'KTPA') || str_contains($judul, 'KETUA TIM') || str_contains($kode, 'KTPA')
+                || str_contains($judul, 'ATPA') || str_contains($judul, 'ANGGOTA TIM');
+        }
+
+        return false;
+    }
+
     // ════════════════════════════════════════════════════════════════
     // GET /peserta/skema — daftar skema aktif + agregat
     // ════════════════════════════════════════════════════════════════
@@ -63,7 +88,15 @@ class PesertaSkemaController extends Controller
             ->pluck('id_skemakkni')
             ->all();
 
-        $data = $skemaList->map(function ($s) use ($sudahDaftar) {
+        $isSertifikatValid = ($asesi->status_sertifikat === 'VALID');
+        $jenisSertifikat = $asesi->jenis_sertifikat;
+
+        $data = $skemaList->map(function ($s) use ($sudahDaftar, $isSertifikatValid, $jenisSertifikat, $asesi) {
+            $sudahBersertifikatAktif = false;
+            if ($isSertifikatValid && $this->skemaCocokSertifikatAktif($s, $jenisSertifikat)) {
+                $sudahBersertifikatAktif = true;
+            }
+
             return [
                 'id' => (int) $s->id,
                 'kode_skema' => $s->kode_skema,
@@ -74,6 +107,10 @@ class PesertaSkemaController extends Controller
                 'total_biaya' => (int) $s->total_biaya,
                 'total_biaya_formatted' => 'Rp. '.number_format((float) $s->total_biaya, 0, ',', '.'),
                 'sudah_daftar' => in_array((string) $s->id, array_map('strval', $sudahDaftar), true),
+                'sudah_bersertifikat_aktif' => $sudahBersertifikatAktif,
+                'jenis_sertifikat_aktif' => $sudahBersertifikatAktif ? $asesi->jenis_sertifikat : null,
+                'nomor_sertifikat_aktif' => $sudahBersertifikatAktif ? $asesi->no_sertifikat : null,
+                'pesan_sertifikat_aktif' => $sudahBersertifikatAktif ? "Anda telah memiliki sertifikat aktif {$asesi->jenis_sertifikat} yang telah diverifikasi Valid oleh Admin LSK." : null,
             ];
         });
 
@@ -138,6 +175,23 @@ class PesertaSkemaController extends Controller
 
         // ── Gate 3 syarat ──
         $gate = $this->gate->hitungGate($asesi, $skema);
+
+        $isSertifikatValid = ($asesi->status_sertifikat === 'VALID');
+        $jenisSertifikat = $asesi->jenis_sertifikat;
+        $sudahBersertifikatAktif = false;
+        if ($isSertifikatValid && $this->skemaCocokSertifikatAktif($skema, $jenisSertifikat)) {
+            $sudahBersertifikatAktif = true;
+        }
+
+        if ($sudahBersertifikatAktif) {
+            $gate['sertifikat_aktif'] = [
+                'ok' => false,
+                'jenis' => $asesi->jenis_sertifikat,
+                'no_sertifikat' => $asesi->no_sertifikat,
+                'pesan' => "Anda telah memiliki Sertifikat Aktif {$asesi->jenis_sertifikat} (No: {$asesi->no_sertifikat}) yang telah diverifikasi Valid oleh Admin LSK. Pendaftaran uji kompetensi skema ini dinonaktifkan.",
+            ];
+            $gate['lolos'] = false;
+        }
 
         // ── Dokumen saya utk skema ini ──
         $dokumenSaya = AsesiDoc::where('id_asesi', $asesi->no_pendaftaran)
@@ -437,6 +491,13 @@ class PesertaSkemaController extends Controller
                     'unit_terpilih' => $unitTerpilih,
                 ],
                 'gate' => $gate,
+                'sertifikat_aktif' => [
+                    'memiliki' => $sudahBersertifikatAktif,
+                    'jenis' => $sudahBersertifikatAktif ? $asesi->jenis_sertifikat : null,
+                    'no_sertifikat' => $sudahBersertifikatAktif ? $asesi->no_sertifikat : null,
+                    'status' => $sudahBersertifikatAktif ? $asesi->status_sertifikat : null,
+                    'pesan' => $sudahBersertifikatAktif ? "Anda telah memiliki sertifikat aktif {$asesi->jenis_sertifikat} yang telah diverifikasi Valid oleh Admin LSK." : null,
+                ],
                 'dokumen_saya' => $dokumenSaya,
                 'pendaftaran_saya' => $pendaftaran ? [
                     'id_asesmen' => (int) $pendaftaran->id,

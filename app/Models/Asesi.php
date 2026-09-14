@@ -56,6 +56,7 @@ class Asesi extends Model
         'sertifikat_kompetensi_lain',
         'form_pendaftaran',
         'sertifikat_atpa_ktpa',
+        'file_sertifikat_aktif',
         'jenis_sertifikat',
         'masa_berlaku_sertifikat',
         'status_sertifikat',

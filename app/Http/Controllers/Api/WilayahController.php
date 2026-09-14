@@ -90,6 +90,33 @@ class WilayahController extends Controller
      * @param string $id
      * @return \Illuminate\Http\JsonResponse
      */
+    
+    /**
+     * Get kelurahan/desa by district/kecamatan ID
+     *
+     * @param string $kecamatanId
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getKelurahan($kecamatanId)
+    {
+        $kelurahan = DataWilayah::where('id_level_wil', 4)
+            ->byParent($kecamatanId)
+            ->orderBy('nm_wil')
+            ->get(['id_wil', 'nm_wil']);
+
+        return response()->json([
+            'success' => true,
+            'data' => $kelurahan->map(function ($item) {
+                return [
+                    'id' => (string) $item->id_wil,
+                    'name' => $item->nm_wil,
+                    'value' => (string) $item->id_wil,
+                    'label' => $item->nm_wil,
+                ];
+            }),
+        ]);
+    }
+
     public function getDetail($id)
     {
         $wilayah = DataWilayah::find($id);
@@ -141,6 +168,7 @@ class WilayahController extends Controller
             1 => 'Provinsi',
             2 => 'Kota/Kabupaten',
             3 => 'Kecamatan',
+            4 => 'Kelurahan/Desa',
             default => 'Unknown',
         };
     }

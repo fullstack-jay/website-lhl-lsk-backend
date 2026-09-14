@@ -187,6 +187,15 @@ class PesertaProfilController extends Controller
                 
                 'sertifikat_atpa_ktpa' => $asesi->sertifikat_atpa_ktpa,
                 'sertifikat_atpa_ktpa_url' => $asesi->sertifikat_atpa_ktpa ? "{$baseUrl}/storage/foto_asesi/" . $asesi->sertifikat_atpa_ktpa : null,
+                'jenis_sertifikat' => $asesi->jenis_sertifikat,
+                'no_sertifikat' => $asesi->no_sertifikat,
+                'tgl_sertifikat' => $asesi->tgl_sertifikat ? $asesi->tgl_sertifikat->format('Y-m-d') : null,
+                'masa_berlaku_sertifikat' => $asesi->masa_berlaku_sertifikat ? (\Carbon\Carbon::parse($asesi->masa_berlaku_sertifikat)->format('Y-m-d')) : null,
+                'status_sertifikat' => $asesi->status_sertifikat ?: 'BELUM_UPLOAD',
+                'file_sertifikat_aktif' => $asesi->file_sertifikat_aktif,
+                'file_sertifikat_aktif_url' => $asesi->file_sertifikat_aktif ? "{$baseUrl}/storage/foto_asesi/" . $asesi->file_sertifikat_aktif : null,
+                'catatan_sertifikat' => $asesi->catatan_sertifikat,
+                'tgl_verifikasi_sertifikat' => $asesi->tgl_verifikasi_sertifikat,
 
                 // Legacy keys
                 'transkrip' => $asesi->transkrip,
@@ -251,6 +260,8 @@ class PesertaProfilController extends Controller
             'kodepos' => 'nullable|string|max:10',
             'no_sertifikat' => 'nullable|string|max:100',
             'tgl_sertifikat' => 'nullable|date',
+            'jenis_sertifikat' => 'nullable|string|in:ATPA,KTPA',
+            'masa_berlaku_sertifikat' => 'nullable|date',
         ];
 
         foreach ($docKeys as $docKey) {
@@ -340,6 +351,115 @@ class PesertaProfilController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal memperbarui profil: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    /**
+     * POST /api/v1/peserta/sertifikat-atpa-ktpa
+     * Upload / update sertifikat aktif ATPA/KTPA dari profil peserta
+     */
+    public function uploadSertifikatAtpaKtpa(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthenticated',
+            ], 401);
+        }
+
+        $asesi = Asesi::where('no_ktp', $user->no_ktp)
+            ->orWhere('no_pendaftaran', $user->username)
+            ->orWhere('no_pendaftaran', $user->no_induk)
+            ->orWhere('nohp', $user->no_telp)
+            ->first();
+
+        $fileUpload = $request->file('file_sertifikat_aktif') ?: ($request->file('sertifikat_atpa_ktpa') ?: $request->file('file'));
+        $hasExistingFile = !empty($asesi?->file_sertifikat_aktif);
+
+        if (!$fileUpload && !$hasExistingFile) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Berkas sertifikat aktif (PDF/Gambar) wajib diunggah.',
+                'errors' => ['file_sertifikat_aktif' => ['Berkas sertifikat aktif (PDF/Gambar) wajib diunggah']],
+            ], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'jenis_sertifikat' => 'required|in:ATPA,KTPA',
+            'no_sertifikat' => 'required|string|max:100',
+            'tgl_sertifikat' => 'nullable|date',
+            'masa_berlaku_sertifikat' => 'nullable|date',
+        ], [
+            'jenis_sertifikat.required' => 'Pilih jenis sertifikat (ATPA atau KTPA)',
+            'no_sertifikat.required' => 'Nomor sertifikat wajib diisi',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => collect($validator->errors()->all())->first() ?: 'Validasi gagal',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $noPendaftaran = $asesi ? $asesi->no_pendaftaran : ($user->no_induk ?: Asesi::generateNoPendaftaran());
+
+        DB::beginTransaction();
+        try {
+            $data = [
+                'jenis_sertifikat' => $request->jenis_sertifikat,
+                'no_sertifikat' => $request->no_sertifikat,
+                'tgl_sertifikat' => $request->tgl_sertifikat ?: now()->toDateString(),
+                'masa_berlaku_sertifikat' => $request->masa_berlaku_sertifikat ?: now()->addYears(5)->toDateString(),
+                'status_sertifikat' => 'MENUNGGU_VERIFIKASI',
+                'catatan_sertifikat' => null,
+            ];
+
+            if ($fileUpload) {
+                $ext = $fileUpload->getClientOriginalExtension();
+                $filename = $noPendaftaran . '_sertifikat_aktif.' . $ext;
+                $fileUpload->storeAs('foto_asesi', $filename, 'public');
+                $data['file_sertifikat_aktif'] = $filename;
+            }
+
+            if ($asesi) {
+                $asesi->update($data);
+                $asesi->refresh();
+            } else {
+                $data['no_pendaftaran'] = $noPendaftaran;
+                $data['nama'] = $user->nama_lengkap;
+                $data['no_ktp'] = $user->no_ktp;
+                $data['email'] = $user->email;
+                $data['nohp'] = $user->no_telp;
+                $data['tgl_daftar'] = now()->toDateString();
+                $data['angkatan'] = now()->year;
+                $data['verifikasi'] = 'P';
+                $data['blokir'] = 'N';
+                $asesi = Asesi::create($data);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Sertifikat aktif ATPA/KTPA berhasil diunggah dan sedang menunggu verifikasi admin.',
+                'data' => [
+                    'file_sertifikat_aktif' => $asesi->file_sertifikat_aktif,
+                    'file_sertifikat_aktif_url' => $asesi->file_sertifikat_aktif ? url('storage/foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
+                    'jenis_sertifikat' => $asesi->jenis_sertifikat,
+                    'no_sertifikat' => $asesi->no_sertifikat,
+                    'tgl_sertifikat' => $asesi->tgl_sertifikat ? $asesi->tgl_sertifikat->format('Y-m-d') : null,
+                    'masa_berlaku_sertifikat' => $asesi->masa_berlaku_sertifikat ? (\Carbon\Carbon::parse($asesi->masa_berlaku_sertifikat)->format('Y-m-d')) : null,
+                    'status_sertifikat' => $asesi->status_sertifikat,
+                    'catatan_sertifikat' => $asesi->catatan_sertifikat,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Terjadi kesalahan saat mengunggah sertifikat: ' . $e->getMessage(),
             ], 500);
         }
     }

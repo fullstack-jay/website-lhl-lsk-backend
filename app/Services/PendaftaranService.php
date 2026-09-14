@@ -31,6 +31,24 @@ class PendaftaranService
 
             // Prepare data pendaftaran
             $data['no_pendaftaran'] = $noPendaftaran;
+
+            // Handle file upload sertifikat ATPA/KTPA jika disertakan
+            $hasCert = !empty($data['has_active_certificate']) && in_array($data['has_active_certificate'], [1, '1', true, 'true'], true);
+            $certFile = null;
+            if (request()->hasFile('file_sertifikat')) {
+                $fileSert = request()->file('file_sertifikat');
+                $ext = $fileSert->getClientOriginalExtension();
+                $filename = $noPendaftaran . '_sertifikat_aktif.' . $ext;
+                $fileSert->storeAs('foto_asesi', $filename, 'public');
+                $certFile = $filename;
+                $data['file_sertifikat'] = $filename;
+                $hasCert = true;
+            }
+
+            if ($hasCert || $certFile) {
+                $data['has_active_certificate'] = true;
+                $data['status_sertifikat'] = 'MENUNGGU_VERIFIKASI';
+            }
             $data['password'] = Hash::make($randomPassword);
             // Set status DIVERIFIKASI karena data langsung diterima tanpa verifikasi email
             $data['status'] = 'DIVERIFIKASI';
@@ -89,6 +107,45 @@ class PendaftaranService
             ];
 
             $user = User::create($userData);
+
+            // Create or sync asesi record
+            \App\Models\Asesi::updateOrCreate(
+                ['no_pendaftaran' => $noPendaftaran],
+                [
+                    'no_ktp' => $data['no_ktp'],
+                    'nama' => $data['nama'],
+                    'email' => $data['email'],
+                    'nohp' => $data['no_hp'],
+                    'kebangsaan' => $data['kebangsaan'] ?? 'Indonesia',
+                    'pendidikan' => $data['kualifikasi_pendidikan'] ?? null,
+                    'keahlian_penyusun' => $formattedKeahlian ?: ($data['bidang_keahlian'] ?? null),
+                    'alamat' => $data['alamat'] ?? null,
+                    'RT' => $rt,
+                    'RW' => $rw,
+                    'propinsi' => $data['propinsi'] ?? null,
+                    'kota' => $data['kota'] ?? null,
+                    'kecamatan' => $data['kecamatan'] ?? null,
+                    'kelurahan' => $data['kelurahan'] ?? null,
+                    'kodepos' => $data['kode_pos'] ?? null,
+                    'wil_ujikom' => $data['wil_ujikom'] ?? null,
+                    'nama_kantor' => $data['nama_institusi'] ?? null,
+                    'jabatan' => $data['jabatan'] ?? null,
+                    'alamat_kantor' => $data['alamat_kantor'] ?? null,
+                    'telp_kantor' => $data['no_telp_kantor'] ?? null,
+                    'fax_kantor' => $data['no_fax_kantor'] ?? null,
+                    'email_kantor' => $data['email_kantor'] ?? null,
+                    'tgl_daftar' => now()->toDateString(),
+                    'angkatan' => now()->year,
+                    'blokir' => 'N',
+                    'verifikasi' => 'P',
+                    'file_sertifikat_aktif' => $certFile,
+                    'jenis_sertifikat' => $data['jenis_sertifikat'] ?? ($hasCert ? 'ATPA' : null),
+                    'no_sertifikat' => $data['no_sertifikat'] ?? null,
+                    'tgl_sertifikat' => $data['tgl_sertifikat'] ?? null,
+                    'masa_berlaku_sertifikat' => $data['masa_berlaku_sertifikat'] ?? null,
+                    'status_sertifikat' => ($hasCert || $certFile) ? 'MENUNGGU_VERIFIKASI' : 'BELUM_UPLOAD',
+                ]
+            );
 
             DB::commit();
 

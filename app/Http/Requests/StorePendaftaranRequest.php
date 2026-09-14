@@ -72,6 +72,14 @@ class StorePendaftaranRequest extends FormRequest
             'no_telp_kantor' => 'nullable|string|max:20',
             'no_fax_kantor' => 'nullable|string|max:20',
             'email_kantor' => 'nullable|email|max:255',
+
+            // Sertifikat Aktif ATPA/KTPA
+            'has_active_certificate' => 'nullable',
+            'jenis_sertifikat' => 'nullable|string|in:ATPA,KTPA',
+            'no_sertifikat' => 'nullable|string|max:100',
+            'tgl_sertifikat' => 'nullable|date',
+            'masa_berlaku_sertifikat' => 'nullable|date',
+            'file_sertifikat' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240',
         ];
     }
 

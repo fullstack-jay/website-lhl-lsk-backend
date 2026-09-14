@@ -39,6 +39,15 @@ class Pendaftaran extends Model
         'email_kantor',
         // Password untuk akses sistem
         'password',
+        // Sertifikat ATPA/KTPA
+        'has_active_certificate',
+        'jenis_sertifikat',
+        'no_sertifikat',
+        'tgl_sertifikat',
+        'masa_berlaku_sertifikat',
+        'file_sertifikat',
+        'status_sertifikat',
+        'catatan_sertifikat',
         // Status
         'status',
         'catatan',
@@ -48,6 +57,15 @@ class Pendaftaran extends Model
 
     protected $hidden = [
         'password',
+        // Sertifikat ATPA/KTPA
+        'has_active_certificate',
+        'jenis_sertifikat',
+        'no_sertifikat',
+        'tgl_sertifikat',
+        'masa_berlaku_sertifikat',
+        'file_sertifikat',
+        'status_sertifikat',
+        'catatan_sertifikat',
     ];
 
     protected $casts = [

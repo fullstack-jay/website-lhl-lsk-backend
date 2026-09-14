@@ -296,6 +296,7 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/asesmen-saya', [\App\Http\Controllers\Api\AsesmenSayaController::class, 'index']);
     Route::get('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'update']);
+    Route::post('/sertifikat-atpa-ktpa', [\App\Http\Controllers\Api\PesertaProfilController::class, 'uploadSertifikatAtpaKtpa']);
 
     // Konfirmasi Pembayaran (konfpay) — docs/BACKEND_KONFIRMASI_PEMBAYARAN.md
     Route::get('/konfirmasi-pembayaran', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'index']);
@@ -362,6 +363,7 @@ Route::prefix('wilayah')->group(function () {
     Route::get('/provinsi', [\App\Http\Controllers\Api\WilayahController::class, 'getProvinsi']);
     Route::get('/kota/{provinsiId}', [\App\Http\Controllers\Api\WilayahController::class, 'getKota']);
     Route::get('/kecamatan/{kotaId}', [\App\Http\Controllers\Api\WilayahController::class, 'getKecamatan']);
+    Route::get('/kelurahan/{kecamatanId}', [\App\Http\Controllers\Api\WilayahController::class, 'getKelurahan']);
     Route::get('/detail/{id}', [\App\Http\Controllers\Api\WilayahController::class, 'getDetail']);
 });
 
@@ -613,6 +615,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{noPendaftaran}/verifikasi-dokumen', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasiDokumen']);
         Route::put('/{noPendaftaran}/validasi-pembayaran', [\App\Http\Controllers\Api\AsesiController::class, 'updateValidasiPembayaran']);
         Route::put('/{noPendaftaran}/kwitansi-signature', [\App\Http\Controllers\Api\AsesiController::class, 'updateKwitansiSignature']);
+    });
+
+    // Verifikasi Sertifikat Peserta (ATPA / KTPA)
+    Route::prefix('peserta-verifikasi-sertifikat')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\PesertaVerifikasiSertifikatController::class, 'index']);
+        Route::post('/{id}/verifikasi', [\App\Http\Controllers\Api\PesertaVerifikasiSertifikatController::class, 'verifikasi']);
     });
 
     // Calon Peserta Baru (asesibaru) routes — sesuai docs/BACKEND_CALONPESERTABARU.md

@@ -50,11 +50,23 @@ class KewajibanPesertaController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
-        if (!$sertifikatAsesmen) {
+        $verifDok = is_array($asesi->verifikasi_dokumen)
+            ? $asesi->verifikasi_dokumen
+            : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
+
+        $hasVerifiedSertifikat = ($asesi->status_sertifikat === 'VALID');
+
+        if (!$sertifikatAsesmen && !$hasVerifiedSertifikat) {
             return response()->json([
                 'success' => true,
                 'data' => [
-                    'sertifikat' => ['ada' => false],
+                    'sertifikat' => [
+                        'ada' => false,
+                        'status_sertifikat' => $asesi->status_sertifikat ?: 'BELUM_UPLOAD',
+                        'catatan_sertifikat' => $asesi->catatan_sertifikat,
+                        'no_sertifikat' => $asesi->no_sertifikat,
+                        'jenis_sertifikat' => $asesi->jenis_sertifikat,
+                    ],
                     'summary' => null,
                     'pemeliharaan' => [],
                     'evaluasi' => [],
@@ -64,10 +76,12 @@ class KewajibanPesertaController extends Controller
             ]);
         }
 
-        $sertifikatNo = $sertifikatAsesmen->no_serisertifikat;
+        $currentYear = (int) now()->year;
+        $sertifikatNo = $sertifikatAsesmen?->no_serisertifikat
+            ?: ($asesi->no_sertifikat ?: ('SERT/' . $currentYear . '/' . ($asesi->jenis_sertifikat ?: 'ATPA') . '/' . substr($asesi->no_pendaftaran, -4)));
 
         // Auto-create pemeliharaan tahun berjalan + evaluasi berikutnya (lazy §7)
-        $this->ensureRecords($asesi->no_pendaftaran, $sertifikatNo, $sertifikatAsesmen);
+        $this->ensureRecords($asesi->no_pendaftaran, $sertifikatNo, $sertifikatAsesmen, $asesi);
 
         // ── Pemeliharaan + derive status ──
         $pemeliharaan = DB::table('asesi_pemeliharaan')
@@ -181,17 +195,21 @@ class KewajibanPesertaController extends Controller
             ->distinct()->orderBy('tahun', 'desc')
             ->pluck('tahun');
 
+        $masaBerlaku = $sertifikatAsesmen?->masa_berlaku 
+            ?: ($asesi->masa_berlaku_sertifikat ? date('Y-m-d', strtotime($asesi->masa_berlaku_sertifikat)) : date('Y-m-d', strtotime('+5 years')));
+        $fotoSertifikatUrl = !empty($sertifikatAsesmen?->foto_sertifikat)
+            ? asset('foto_sertifikat/' . $sertifikatAsesmen->foto_sertifikat)
+            : ($asesi->sertifikat_atpa_ktpa ? asset('storage/foto_asesi/' . $asesi->sertifikat_atpa_ktpa) : null);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'sertifikat' => [
                     'ada' => true,
-                    'no_sertifikat' => $sertifikatAsesmen->no_serisertifikat,
-                    'masa_berlaku' => $sertifikatAsesmen->masa_berlaku
-                        ? date('Y-m-d', strtotime($sertifikatAsesmen->masa_berlaku)) : null,
-                    'foto_sertifikat_url' => !empty($sertifikatAsesmen->foto_sertifikat)
-                        ? asset('foto_sertifikat/' . $sertifikatAsesmen->foto_sertifikat) : null,
-                    'status_masa_berlaku' => $this->statusMasaBerlaku($sertifikatAsesmen->masa_berlaku),
+                    'no_sertifikat' => $sertifikatNo,
+                    'masa_berlaku' => $masaBerlaku,
+                    'foto_sertifikat_url' => $fotoSertifikatUrl,
+                    'status_masa_berlaku' => $this->statusMasaBerlaku($masaBerlaku),
                 ],
                 'summary' => $summary,
                 'pemeliharaan' => $pemeliharaan,
@@ -902,7 +920,7 @@ class KewajibanPesertaController extends Controller
      * Lazy-create records (§7 fallback): pemeliharaan tahun berjalan +
      * evaluasi berikutnya utk sertifikat aktif.
      */
-    private function ensureRecords(string $noPendaftaran, string $sertifikatNo, $asesmen): void
+    private function ensureRecords(string $noPendaftaran, string $sertifikatNo, $asesmen = null, $asesi = null): void
     {
         $tahunIni = (int) now()->year;
 
@@ -912,7 +930,7 @@ class KewajibanPesertaController extends Controller
         if (!$exists) {
             DB::table('asesi_pemeliharaan')->insert([
                 'id_asesi' => $noPendaftaran,
-                'id_asesmen' => $asesmen->id,
+                'id_asesmen' => $asesmen?->id,
                 'sertifikat_no' => $sertifikatNo,
                 'tahun' => $tahunIni,
                 'status' => 'BELUM',
@@ -920,12 +938,13 @@ class KewajibanPesertaController extends Controller
             ]);
         }
 
-        // Evaluasi berikutnya (masa_berlaku - 3 tahun); buat hingga tahun depan
-        if (!empty($asesmen->masa_berlaku)) {
-            $masaBerlaku = (int) date('Y', strtotime($asesmen->masa_berlaku));
+        // Evaluasi berikutnya (masa_berlaku - 3 tahun)
+        $masaBerlakuRaw = $asesmen?->masa_berlaku ?: ($asesi?->masa_berlaku_sertifikat ?: date('Y-m-d', strtotime('+5 years')));
+        if (!empty($masaBerlakuRaw)) {
+            $masaBerlaku = (int) date('Y', strtotime($masaBerlakuRaw));
             $tahunEvaluasi = $masaBerlaku - 3;
             if ($tahunEvaluasi > 2000) {
-                $tahunKe = max(1, $masaBerlaku - 2024);   // evaluasi pertama ~3 thn setelah terbit
+                $tahunKe = 3;
                 $existsE = DB::table('asesi_evaluasi')
                     ->where('id_asesi', $noPendaftaran)->where('tahun_ke', $tahunKe)->exists();
                 if (!$existsE) {

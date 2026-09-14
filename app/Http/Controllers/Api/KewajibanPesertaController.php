@@ -206,6 +206,9 @@ class KewajibanPesertaController extends Controller
             'data' => [
                 'sertifikat' => [
                     'ada' => true,
+                    'nama_peserta' => $asesi->nama ?: ($asesi->nama_lengkap ?: ($request->user()?->nama_lengkap ?: 'Peserta LSK')),
+                    'nik' => $asesi->no_ktp ?: ($request->user()?->no_ktp ?: '-'),
+                    'jenis_sertifikat' => $asesi->jenis_sertifikat ?: 'ATPA',
                     'no_sertifikat' => $sertifikatNo,
                     'masa_berlaku' => $masaBerlaku,
                     'foto_sertifikat_url' => $fotoSertifikatUrl,
@@ -416,10 +419,14 @@ class KewajibanPesertaController extends Controller
             ->first();
 
         if (!$record) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Record pemeliharaan tahun ' . $tahun . ' tidak ditemukan',
-            ], 404);
+            $pemId = DB::table('asesi_pemeliharaan')->insertGetId([
+                'id_asesi' => $asesi->no_pendaftaran,
+                'sertifikat_no' => $asesi->no_sertifikat ?: ('SERT/' . $tahun . '/ATPA/' . substr($asesi->no_pendaftaran, -4)),
+                'tahun' => (int) $tahun,
+                'status' => 'BELUM',
+                'waktu' => now(),
+            ]);
+            $record = DB::table('asesi_pemeliharaan')->where('id', $pemId)->first();
         }
 
         // Validasi per row (kontrak interface KegiatanPKbItem frontend)
@@ -464,6 +471,17 @@ class KewajibanPesertaController extends Controller
                     $file->move($dest, $fileName);
                 }
 
+                $waktuVal = now()->toDateString();
+                if (!empty($row['waktu'])) {
+                    try {
+                        $waktuVal = \Carbon\Carbon::parse($row['waktu'])->toDateString();
+                    } catch (\Throwable $e) {
+                        if (preg_match('/(\d{4})/', $row['waktu'], $m)) {
+                            $waktuVal = "{$m[1]}-01-01";
+                        }
+                    }
+                }
+
                 DB::table('asesi_pemeliharaan_pkb')->insert([
                     'id_pemeliharaan' => $record->id,
                     'bentuk_kegiatan' => $row['bentuk_kegiatan'],
@@ -471,9 +489,9 @@ class KewajibanPesertaController extends Controller
                     'tema' => $row['tema'],
                     'penyelenggara' => $row['penyelenggara'],
                     'lokasi' => $row['lokasi'],
-                    'waktu' => $row['waktu'],
+                    'waktu' => $waktuVal,
                     'deskripsi_singkat' => $row['deskripsi_singkat'] ?? null,
-                    'file_bukti' => $fileName,
+                    'file_bukti' => $fileName ?: ($row['dokumen_bukti'] ?? null),
                 ]);
             }
 
@@ -736,27 +754,26 @@ class KewajibanPesertaController extends Controller
                 ];
                 $buktiData = [];
                 foreach ($buktiFields as $bf) {
-                    if (!$request->hasFile("files.{$i}.{$bf}")) {
-                        DB::rollBack();
-                        return response()->json([
-                            'success' => false,
-                            'message' => "Baris " . ($i + 1) . ": bukti {$bf} wajib diunggah (PDF, maks 2MB)",
-                        ], 422);
+                    if ($request->hasFile("files.{$i}.{$bf}")) {
+                        $file = $request->file("files.{$i}.{$bf}");
+                        $ext = strtolower($file->getClientOriginalExtension());
+                        if ($ext !== 'pdf') {
+                            DB::rollBack();
+                            return response()->json([
+                                'success' => false,
+                                'message' => "Baris " . ($i + 1) . ": bukti {$bf} harus PDF",
+                            ], 422);
+                        }
+                        $fileName = time() . '_logbook_' . uniqid() . '.pdf';
+                        $dest = public_path(self::dir());
+                        if (!file_exists($dest)) mkdir($dest, 0755, true);
+                        $file->move($dest, $fileName);
+                        $buktiData[$bf] = $fileName;
+                    } elseif (!empty($row[$bf])) {
+                        $buktiData[$bf] = basename((string) $row[$bf]);
+                    } else {
+                        $buktiData[$bf] = null;
                     }
-                    $file = $request->file("files.{$i}.{$bf}");
-                    $ext = strtolower($file->getClientOriginalExtension());
-                    if ($ext !== 'pdf') {
-                        DB::rollBack();
-                        return response()->json([
-                            'success' => false,
-                            'message' => "Baris " . ($i + 1) . ": bukti {$bf} harus PDF",
-                        ], 422);
-                    }
-                    $fileName = time() . '_logbook_' . uniqid() . '.pdf';
-                    $dest = public_path(self::dir());
-                    if (!file_exists($dest)) mkdir($dest, 0755, true);
-                    $file->move($dest, $fileName);
-                    $buktiData[$bf] = $fileName;
                 }
 
                 // Insert row

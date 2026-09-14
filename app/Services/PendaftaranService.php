@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Repositories\PendaftaranRepository;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class PendaftaranService
 {
@@ -148,6 +150,58 @@ class PendaftaranService
             );
 
             DB::commit();
+
+            // =========================================================================
+            // KIRIM EMAIL KREDENSIAL (NOMOR PENDAFTARAN & KATA SANDI) KE PESERTA
+            // =========================================================================
+            try {
+                if (!empty($pendaftaran->email)) {
+                    $loginUrl = env('FRONTEND_URL', 'http://localhost:3000') . '/login/peserta';
+
+                    Mail::html("
+                        <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <div style='background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center;'>
+                                <h2 style='margin: 0; font-size: 22px; font-weight: 700;'>Pendaftaran Akun Peserta Berhasil</h2>
+                                <p style='margin: 8px 0 0 0; opacity: 0.9; font-size: 13px;'>LSK Lingkungan Hidup Lestari</p>
+                            </div>
+                            <div style='padding: 25px;'>
+                                <p>Halo <strong>{$pendaftaran->nama}</strong>,</p>
+                                <p>Selamat! Pendaftaran akun peserta Anda telah berhasil diproses. Berikut adalah rincian data akun dan kata sandi Anda untuk masuk ke sistem:</p>
+
+                                <div style='background-color: #f8fafc; border-left: 4px solid #0d9488; padding: 16px; margin: 20px 0; border-radius: 6px;'>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b; width: 40%;'>Nomor Pendaftaran</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$noPendaftaran}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor KTP (NIK)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$pendaftaran->no_ktp}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Kata Sandi (Password)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #b45309; font-size: 16px;'>: {$randomPassword}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <p>Silakan gunakan <strong>Nomor Pendaftaran</strong> (atau Nomor KTP) dan <strong>Kata Sandi</strong> di atas untuk login ke portal peserta:</p>
+                                <div style='text-align: center; margin: 30px 0;'>
+                                    <a href='{$loginUrl}' style='background-color: #0d9488; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Masuk ke Portal Peserta</a>
+                                </div>
+                                <p style='color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;'>
+                                    * Harap simpan informasi kata sandi ini dengan baik dan jangan bagikan kepada siapa pun.
+                                </p>
+                            </div>
+                        </div>
+                    ", function ($message) use ($pendaftaran) {
+                        $message->to($pendaftaran->email, $pendaftaran->nama)
+                                ->subject('Informasi Akun & Kata Sandi Pendaftaran - LSK LHL');
+                    });
+                }
+            } catch (\Exception $mailEx) {
+                Log::warning('Gagal mengirim email kredensial ke ' . $pendaftaran->email . ': ' . $mailEx->getMessage());
+            }
+            // =========================================================================
 
             return [
                 'pendaftaran' => $pendaftaran,

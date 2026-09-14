@@ -200,14 +200,30 @@ class PengaduanController extends Controller
             'isi' => $request->tanggapan,
         ]);
 
-        // Kirim notifikasi jika diminta
-        if ($request->kirim_notifikasi && $pengaduan->email) {
-            Mail::to($pengaduan->email)->send(new PengaduanResponMail($pengaduan, $request->tanggapan));
+        // Kirim notifikasi jika diminta dan email tersedia
+        $emailSent = false;
+        $emailError = null;
+        if ($request->kirim_notifikasi && !empty($pengaduan->email)) {
+            try {
+                Mail::to($pengaduan->email)->send(new PengaduanResponMail($pengaduan, $request->tanggapan));
+                $emailSent = true;
+            } catch (\Exception $e) {
+                $emailError = $e->getMessage();
+                \Illuminate\Support\Facades\Log::error('Gagal mengirim email respon pengaduan ke ' . $pengaduan->email . ': ' . $e->getMessage());
+            }
+        }
+
+        $message = 'Respon berhasil dikirim.';
+        if ($emailSent) {
+            $message = 'Respon berhasil dikirim dan email notifikasi telah dikirim ke ' . $pengaduan->email;
+        } elseif ($emailError) {
+            $message = 'Respon berhasil disimpan, namun email gagal terkirim: ' . $emailError;
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Respon berhasil dikirim',
+            'message' => $message,
+            'email_sent' => $emailSent,
             'data' => $pengaduan->fresh()->load('riwayatRespon'),
         ]);
     }

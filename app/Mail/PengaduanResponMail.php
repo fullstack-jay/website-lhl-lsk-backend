@@ -3,14 +3,18 @@
 namespace App\Mail;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 use App\Models\Pengaduan;
 
-class PengaduanResponMail extends Mailable implements ShouldQueue
+/**
+ * Email respon pengaduan — dikirim LANGSUNG (sync, bukan queue) agar admin
+ * langsung tahu sukses/gagal saat tombol ditekan (realtime, bukan antrean).
+ * Fallback no_pengaduan: kolom bisa NULL di data legacy → pakai ADU-{id}.
+ */
+class PengaduanResponMail extends Mailable
 {
     use Queueable, SerializesModels;
 
@@ -42,8 +46,10 @@ class PengaduanResponMail extends Mailable implements ShouldQueue
      */
     public function envelope(): Envelope
     {
+        $noAduan = $this->pengaduan->no_pengaduan ?? ('ADU-' . $this->pengaduan->id);
+
         return new Envelope(
-            subject: 'Respon Pengaduan Anda - ' . $this->pengaduan->no_pengaduan,
+            subject: 'Respon Pengaduan Anda - ' . $noAduan,
         );
     }
 
@@ -52,13 +58,18 @@ class PengaduanResponMail extends Mailable implements ShouldQueue
      */
     public function content(): Content
     {
+        $noAduan = $this->pengaduan->no_pengaduan ?? ('ADU-' . $this->pengaduan->id);
+        $tanggalAduan = $this->pengaduan->tanggal_waktu_formatted
+            ?? $this->pengaduan->tanggal
+            ?? now()->format('d/m/Y H:i');
+
         return new Content(
             view: 'emails.pengaduan-respon',
             with: [
                 'pengaduan' => $this->pengaduan,
                 'respon' => $this->respon,
-                'noPengaduan' => $this->pengaduan->no_pengaduan,
-                'tanggalAduan' => $this->pengaduan->tanggal_waktu_formatted,
+                'noPengaduan' => $noAduan,
+                'tanggalAduan' => $tanggalAduan,
             ]
         );
     }

@@ -14,7 +14,13 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('', fn () => view('web.pages.landing.index'));
+// Backend khusus API — frontend terpisah (project React).
+// Root domain tidak lagi me-render Blade landing (butuh build Vite yang
+// tidak ada di server produksi → 500).
+Route::get('', fn () => response()->json([
+    'status' => 'success',
+    'message' => 'LSK LHL API is running',
+]));
 
 Route::get('home', [Home\HomeController::class, 'index'])->middleware(['auth', 'verified', 'password.confirm'])->name('home');
 

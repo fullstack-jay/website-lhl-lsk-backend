@@ -14,4 +14,6 @@
 <link href="https://fonts.googleapis.com/css?family=Nunito" rel="stylesheet">
 
 <!-- Scripts -->
-@vite(['resources/sass/app.scss', 'resources/vendor/fortify-ui/sass/starter/auth.scss', 'resources/js/app.js'])
+@if(file_exists(public_path('build/manifest.json')))
+    @vite(['resources/sass/app.scss', 'resources/vendor/fortify-ui/sass/starter/auth.scss', 'resources/js/app.js'])
+@endif

@@ -19,9 +19,11 @@ return [
 
     'allowed_methods' => ['*'],
 
-    // Development: Allow specific origins
-    // Production: Update with actual frontend domain
+    // Development: localhost ports
+    // Production: domain frontend produksi
     'allowed_origins' => [
+        'https://lsk-lhl.com',
+        'https://www.lsk-lhl.com',
         'http://localhost:3000',
         'http://127.0.0.1:3000',
         'http://localhost:3001', // Alternative port

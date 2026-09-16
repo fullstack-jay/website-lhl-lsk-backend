@@ -49,6 +49,11 @@ return [
             'transport' => 'ses',
         ],
 
+        // Resend (API email) — butuh package resend/resend-laravel
+        'resend' => [
+            'transport' => 'resend',
+        ],
+
         'mailgun' => [
             'transport' => 'mailgun',
         ],

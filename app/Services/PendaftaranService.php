@@ -156,7 +156,8 @@ class PendaftaranService
             // =========================================================================
             try {
                 if (!empty($pendaftaran->email)) {
-                    $loginUrl = env('FRONTEND_URL', 'http://localhost:3000') . '/login/peserta';
+                    $frontendUrl = rtrim(env('FRONTEND_URL') ?: 'https://lsk-lhl.com', '/');
+                    $loginUrl = $frontendUrl . '/login/peserta';
 
                     Mail::html("
                         <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>

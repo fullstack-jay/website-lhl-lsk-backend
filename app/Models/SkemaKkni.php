@@ -117,34 +117,33 @@ class SkemaKkni extends Model
      */
     public function getStatisticsAttribute(): array
     {
-        $unitCount = $this->unitKompetensi()->count();
-        $elemenCount = $this->unitKompetensi()
-            ->withCount('elemenKompetensi')
-            ->get()
-            ->sum('elemen_kompetensi_count');
-        $kukCount = $this->unitKompetensi()
-            ->with('elemenKompetensi.kriteriaUnjukkerja')
-            ->get()
-            ->sum(function ($unit) {
-                return $unit->elemenKompetensi->sum(function ($elemen) {
-                    return $elemen->kriteriaUnjukkerja->count();
-                });
-            });
+        $unitCount = \DB::table('unit_kompetensi')->where('id_skemakkni', $this->id)->count();
 
-        // Get peserta count using raw query to avoid relationship issues
+        $elemenCount = \DB::table('elemen_kompetensi')
+            ->join('unit_kompetensi', 'unit_kompetensi.id', '=', 'elemen_kompetensi.id_unitkompetensi')
+            ->where('unit_kompetensi.id_skemakkni', $this->id)
+            ->count();
+
+        $kukCount = \DB::table('kriteria_unjukkerja')
+            ->join('elemen_kompetensi', 'elemen_kompetensi.id', '=', 'kriteria_unjukkerja.id_elemenkompetensi')
+            ->join('unit_kompetensi', 'unit_kompetensi.id', '=', 'elemen_kompetensi.id_unitkompetensi')
+            ->where('unit_kompetensi.id_skemakkni', $this->id)
+            ->count();
+
+        // Get peserta count
         $pesertaCount = \DB::table('asesi_asesmen')
             ->where('id_skemakkni', $this->id)
             ->distinct('id_asesi')
             ->count('id_asesi');
 
-        // Get jadwal asesmen count (using id_skemakkni column)
+        // Get jadwal asesmen count
         $jadwalCount = \DB::table('jadwal_asesmen')
             ->where('id_skemakkni', $this->id)
             ->count();
 
         // Get persyaratan counts
-        $persyaratanPesertaCount = $this->persyaratan()->count();
-        $persyaratanTukCount = $this->persyaratanTuk()->count();
+        $persyaratanPesertaCount = \DB::table('skema_persyaratan')->where('id_skemakkni', $this->id)->count();
+        $persyaratanTukCount = \DB::table('skema_persyaratantuk')->where('id_skemakkni', $this->id)->count();
 
         return [
             'jumlah_unit' => $unitCount,

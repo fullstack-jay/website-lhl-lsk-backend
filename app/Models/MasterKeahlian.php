@@ -6,19 +6,20 @@ use Illuminate\Database\Eloquent\Model;
 
 class MasterKeahlian extends Model
 {
-    protected $table = 'master_keahlian';
+    protected $table = "master_keahlian";
 
     protected $fillable = [
-        'nama',
-        'is_default',
+        "nama",
+        "is_default",
     ];
 
     protected $casts = [
-        'is_default' => 'boolean',
+        "is_default" => "boolean",
     ];
 
     /**
-     * Format text to Pascal Case with Spaces (Title Case)
+     * Format text to Title Case and ensure "Ahli " prefix
+     * e.g. "tata ruang" -> "Ahli Tata Ruang"
      * e.g. "ahli tata ruang" -> "Ahli Tata Ruang"
      */
     public static function formatPascalCase(?string $text): ?string
@@ -27,12 +28,16 @@ class MasterKeahlian extends Model
             return null;
         }
 
-        $cleaned = trim(preg_replace('/\s+/', ' ', $text));
+        $cleaned = trim(preg_replace("/\s+/", " ", $text));
         if (empty($cleaned)) {
             return null;
         }
 
-        return mb_convert_case($cleaned, MB_CASE_TITLE, 'UTF-8');
+        if (!preg_match("/^ahli\s+/i", $cleaned)) {
+            $cleaned = "Ahli " . $cleaned;
+        }
+
+        return mb_convert_case($cleaned, MB_CASE_TITLE, "UTF-8");
     }
 
     /**
@@ -46,8 +51,8 @@ class MasterKeahlian extends Model
         }
 
         self::firstOrCreate(
-            ['nama' => $formatted],
-            ['is_default' => false]
+            ["nama" => $formatted],
+            ["is_default" => false]
         );
 
         return $formatted;
@@ -64,11 +69,11 @@ class MasterKeahlian extends Model
         }
 
         if (is_string($input)) {
-            if (str_starts_with(trim($input), '[') && str_ends_with(trim($input), ']')) {
+            if (str_starts_with(trim($input), "[") && str_ends_with(trim($input), "]")) {
                 $decoded = json_decode($input, true);
-                $items = is_array($decoded) ? $decoded : explode(',', $input);
+                $items = is_array($decoded) ? $decoded : explode(",", $input);
             } else {
-                $items = explode(',', $input);
+                $items = explode(",", $input);
             }
         } elseif (is_array($input)) {
             $items = $input;
@@ -78,12 +83,12 @@ class MasterKeahlian extends Model
 
         $formattedList = [];
         foreach ($items as $item) {
-            $rec = self::recordIfNew(is_string($item) ? $item : '');
+            $rec = self::recordIfNew(is_string($item) ? $item : "");
             if (!empty($rec) && !in_array($rec, $formattedList, true)) {
                 $formattedList[] = $rec;
             }
         }
 
-        return !empty($formattedList) ? implode(', ', $formattedList) : null;
+        return !empty($formattedList) ? implode(", ", $formattedList) : null;
     }
 }

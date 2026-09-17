@@ -16,6 +16,11 @@ Route::prefix('auth')->group(function () {
     // Penguji Login (Public)
     Route::post('penguji/login', [Auth\PengujiAuthController::class, 'login']);
 
+    // Fitur Reset Password Otomatis via Email (Public — Peserta, Penguji, Komite Teknis)
+    Route::post('lupa-password', [Auth\ForgotPasswordController::class, 'lupaPassword']);
+    Route::get('validate-reset-token', [Auth\ForgotPasswordController::class, 'validateResetToken']);
+    Route::post('reset-password', [Auth\ForgotPasswordController::class, 'resetPassword']);
+
     // Penguji Lupa Password (Public, rate-limited) — docs/BACKEND_LUPA_PASSWORD_PENGUJI.md Fitur B
     Route::post('penguji/lupa-password', [Auth\PengujiAuthController::class, 'lupaPassword'])
         ->middleware('throttle:lupa-password');

@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 /**
@@ -437,24 +439,92 @@ class PengujiController extends Controller
 
             // 2. Mirror akun ke tabel users (level=penguji, username=no_ktp)
             //    agar bisa login via /api/v1/auth/penguji/login
-            $user = User::create([
-                'username' => $request->no_ktp,                    // session native pakai no_ktp
-                'password' => Hash::make(self::DEFAULT_PASSWORD),
-                'nama_lengkap' => $asesor->nama,
-                'gelar_depan' => $asesor->gelar_depan,
-                'gelar_blk' => $asesor->gelar_blk,
-                'tmp_lahir' => $asesor->tmp_lahir,
-                'tgl_lahir' => $asesor->tgl_lahir,
-                'no_induk' => $asesor->no_induk,
-                'no_ktp' => $asesor->no_ktp,
-                'pendidikan_terakhir' => $asesor->pendidikan_terakhir,
-                'email' => $asesor->email,
-                'no_telp' => $asesor->no_hp,
-                'level' => 'penguji',
-                'blokir' => 'N',                                   // Y/N enum: N = aktif
-            ]);
+            $user = User::where('username', $request->no_ktp)
+                ->orWhere('no_ktp', $request->no_ktp)
+                ->first();
+
+            if ($user) {
+                if (!in_array($user->level, ['admin', 'superadmin'], true)) {
+                    $user->level = 'penguji';
+                }
+                $user->password = Hash::make(self::DEFAULT_PASSWORD);
+                $user->blokir = 'N';
+            } else {
+                $user = new User();
+                $user->username = $request->no_ktp;
+                $user->level = 'penguji';
+                $user->password = Hash::make(self::DEFAULT_PASSWORD);
+                $user->blokir = 'N';
+            }
+
+            $user->nama_lengkap = $asesor->nama;
+            $user->gelar_depan = $asesor->gelar_depan;
+            $user->gelar_blk = $asesor->gelar_blk;
+            $user->tmp_lahir = $asesor->tmp_lahir;
+            $user->tgl_lahir = $asesor->tgl_lahir;
+            $user->no_induk = $asesor->no_induk;
+            $user->no_ktp = $asesor->no_ktp;
+            $user->pendidikan_terakhir = $asesor->pendidikan_terakhir;
+            $user->email = $asesor->email;
+            $user->no_telp = $asesor->no_hp;
+            $user->save();
 
             DB::commit();
+
+            // 3. Kirim email kredensial akun login ke Penguji
+            try {
+                if (!empty($asesor->email)) {
+                    $frontendUrl = rtrim(config('app.frontend_url') ?? env('FRONTEND_URL') ?: 'https://lsk-lhl.com', '/');
+                    $loginUrl = $frontendUrl . '/login/penguji';
+                    $defaultPassword = self::DEFAULT_PASSWORD;
+
+                    Mail::html("
+                        <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <div style='background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center;'>
+                                <h2 style='margin: 0; font-size: 22px; font-weight: 700;'>Pendaftaran Akun Penguji Berhasil</h2>
+                                <p style='margin: 8px 0 0 0; opacity: 0.9; font-size: 13px;'>LSK Lingkungan Hidup Lestari</p>
+                            </div>
+                            <div style='padding: 25px;'>
+                                <p>Halo <strong>{$asesor->nama}</strong>,</p>
+                                <p>Akun Penguji (Asesor) Anda telah berhasil didaftarkan di sistem LSK Lingkungan Hidup Lestari. Berikut adalah rincian data akun dan kata sandi Anda untuk masuk ke sistem:</p>
+
+                                <div style='background-color: #f8fafc; border-left: 4px solid #059669; padding: 16px; margin: 20px 0; border-radius: 6px;'>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b; width: 40%;'>Nomor KTP (NIK)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$asesor->no_ktp}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor Induk Penguji</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$asesor->no_induk}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor HP</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: " . ($asesor->no_hp ?: '-') . "</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Kata Sandi (Password)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #b45309; font-size: 16px;'>: {$defaultPassword}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <p>Anda dapat login menggunakan <strong>Nomor KTP (NIK)</strong>, <strong>Nomor Induk</strong>, atau <strong>Nomor HP</strong> beserta <strong>Kata Sandi</strong> di atas pada portal penguji:</p>
+                                <div style='text-align: center; margin: 30px 0;'>
+                                    <a href='{$loginUrl}' style='background-color: #059669; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Masuk ke Portal Penguji</a>
+                                </div>
+                                <p style='color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;'>
+                                    * Demi keamanan akun, segera lakukan perubahan kata sandi setelah Anda berhasil login ke sistem.
+                                </p>
+                            </div>
+                        </div>
+                    ", function ($message) use ($asesor) {
+                        $message->to($asesor->email, $asesor->nama)
+                                ->subject('Informasi Akun & Kata Sandi Penguji - LSK LHL');
+                    });
+                }
+            } catch (\Throwable $mailEx) {
+                Log::warning('Gagal mengirim email kredensial penguji ke ' . $asesor->email . ': ' . $mailEx->getMessage());
+            }
 
             return response()->json([
                 'success' => true,
@@ -596,6 +666,51 @@ class PengujiController extends Controller
             }
 
             DB::commit();
+
+            // Kirim notifikasi email reset password
+            try {
+                if (!empty($asesor->email)) {
+                    $frontendUrl = rtrim(config('app.frontend_url') ?? env('FRONTEND_URL') ?: 'https://lsk-lhl.com', '/');
+                    $loginUrl = $frontendUrl . '/login/penguji';
+
+                    Mail::html("
+                        <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <div style='background: linear-gradient(135deg, #059669 0%, #047857 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center;'>
+                                <h2 style='margin: 0; font-size: 22px; font-weight: 700;'>Reset Kata Sandi Penguji Berhasil</h2>
+                                <p style='margin: 8px 0 0 0; opacity: 0.9; font-size: 13px;'>LSK Lingkungan Hidup Lestari</p>
+                            </div>
+                            <div style='padding: 25px;'>
+                                <p>Halo <strong>{$asesor->nama}</strong>,</p>
+                                <p>Kata sandi akun Penguji Anda telah berhasil direset oleh Administrator. Berikut adalah kata sandi baru untuk masuk ke sistem:</p>
+
+                                <div style='background-color: #f8fafc; border-left: 4px solid #059669; padding: 16px; margin: 20px 0; border-radius: 6px;'>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b; width: 40%;'>Nomor KTP (NIK)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$asesor->no_ktp}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Kata Sandi Baru</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #b45309; font-size: 16px;'>: {$plainPassword}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div style='text-align: center; margin: 30px 0;'>
+                                    <a href='{$loginUrl}' style='background-color: #059669; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Masuk ke Portal Penguji</a>
+                                </div>
+                                <p style='color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;'>
+                                    * Segera lakukan perubahan kata sandi demi keamanan akun Anda.
+                                </p>
+                            </div>
+                        </div>
+                    ", function ($message) use ($asesor) {
+                        $message->to($asesor->email, $asesor->nama)
+                                ->subject('Reset Kata Sandi Penguji - LSK LHL');
+                    });
+                }
+            } catch (\Throwable $mailEx) {
+                Log::warning('Gagal mengirim email reset password penguji ke ' . $asesor->email . ': ' . $mailEx->getMessage());
+            }
 
             return response()->json([
                 'success' => true,

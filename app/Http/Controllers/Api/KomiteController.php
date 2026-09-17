@@ -10,6 +10,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Komite Teknis — implementasi modul `komite` PHP Native versi API.
@@ -429,6 +431,65 @@ class KomiteController extends Controller
 
             DB::commit();
 
+            // Kirim email kredensial akun login ke Komite Teknis
+            try {
+                if (!empty($komite->email)) {
+                    $frontendUrl = rtrim(config('app.frontend_url') ?? env('FRONTEND_URL') ?: 'https://lsk-lhl.com', '/');
+                    $loginUrl = $frontendUrl . '/login/komite';
+                    $defaultPassword = self::DEFAULT_PASSWORD;
+
+                    Mail::html("
+                        <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <div style='background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center;'>
+                                <h2 style='margin: 0; font-size: 22px; font-weight: 700;'>Pendaftaran Akun Komite Teknis Berhasil</h2>
+                                <p style='margin: 8px 0 0 0; opacity: 0.9; font-size: 13px;'>LSK Lingkungan Hidup Lestari</p>
+                            </div>
+                            <div style='padding: 25px;'>
+                                <p>Halo <strong>{$komite->nama}</strong>,</p>
+                                <p>Akun Komite Teknis Anda telah berhasil didaftarkan di sistem LSK Lingkungan Hidup Lestari. Berikut adalah rincian data akun dan kata sandi Anda untuk masuk ke sistem:</p>
+
+                                <div style='background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 6px;'>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b; width: 40%;'>Jabatan</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: " . ($komite->jabatan_komite ?: 'Komite Teknis') . "</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor KTP (NIK)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$komite->no_ktp}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor Induk</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: " . ($komite->no_induk ?: '-') . "</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Nomor HP</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: " . ($komite->no_hp ?: '-') . "</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Kata Sandi (Password)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #b45309; font-size: 16px;'>: {$defaultPassword}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <p>Anda dapat login menggunakan <strong>Nomor KTP (NIK)</strong> dan <strong>Kata Sandi</strong> di atas pada portal komite teknis:</p>
+                                <div style='text-align: center; margin: 30px 0;'>
+                                    <a href='{$loginUrl}' style='background-color: #2563eb; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Masuk ke Portal Komite Teknis</a>
+                                </div>
+                                <p style='color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;'>
+                                    * Demi keamanan akun, segera lakukan perubahan kata sandi setelah Anda berhasil login ke sistem.
+                                </p>
+                            </div>
+                        </div>
+                    ", function ($message) use ($komite) {
+                        $message->to($komite->email, $komite->nama)
+                                ->subject('Informasi Akun & Kata Sandi Komite Teknis - LSK LHL');
+                    });
+                }
+            } catch (\Throwable $mailEx) {
+                Log::warning('Gagal mengirim email kredensial komite ke ' . $komite->email . ': ' . $mailEx->getMessage());
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => 'Komite berhasil ditambahkan. Password default telah dikirim ke personil.',
@@ -504,6 +565,51 @@ class KomiteController extends Controller
             }
 
             DB::commit();
+
+            // Kirim notifikasi email reset password
+            try {
+                if (!empty($komite->email)) {
+                    $frontendUrl = rtrim(config('app.frontend_url') ?? env('FRONTEND_URL') ?: 'https://lsk-lhl.com', '/');
+                    $loginUrl = $frontendUrl . '/login/komite';
+
+                    Mail::html("
+                        <div style='font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;'>
+                            <div style='background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 25px; border-radius: 8px 8px 0 0; text-align: center;'>
+                                <h2 style='margin: 0; font-size: 22px; font-weight: 700;'>Reset Kata Sandi Komite Teknis Berhasil</h2>
+                                <p style='margin: 8px 0 0 0; opacity: 0.9; font-size: 13px;'>LSK Lingkungan Hidup Lestari</p>
+                            </div>
+                            <div style='padding: 25px;'>
+                                <p>Halo <strong>{$komite->nama}</strong>,</p>
+                                <p>Kata sandi akun Komite Teknis Anda telah berhasil direset oleh Administrator. Berikut adalah kata sandi baru untuk masuk ke sistem:</p>
+
+                                <div style='background-color: #f8fafc; border-left: 4px solid #2563eb; padding: 16px; margin: 20px 0; border-radius: 6px;'>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 14px;'>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b; width: 40%;'>Nomor KTP (NIK)</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #0f172a;'>: {$komite->no_ktp}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 6px 0; color: #64748b;'>Kata Sandi Baru</td>
+                                            <td style='padding: 6px 0; font-weight: bold; color: #b45309; font-size: 16px;'>: {$plainPassword}</td>
+                                        </tr>
+                                    </table>
+                                </div>
+                                <div style='text-align: center; margin: 30px 0;'>
+                                    <a href='{$loginUrl}' style='background-color: #2563eb; color: white; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;'>Masuk ke Portal Komite Teknis</a>
+                                </div>
+                                <p style='color: #64748b; font-size: 12px; margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 12px;'>
+                                    * Segera lakukan perubahan kata sandi demi keamanan akun Anda.
+                                </p>
+                            </div>
+                        </div>
+                    ", function ($message) use ($komite) {
+                        $message->to($komite->email, $komite->nama)
+                                ->subject('Reset Kata Sandi Komite Teknis - LSK LHL');
+                    });
+                }
+            } catch (\Throwable $mailEx) {
+                Log::warning('Gagal mengirim email reset password komite ke ' . $komite->email . ': ' . $mailEx->getMessage());
+            }
 
             return response()->json([
                 'success' => true,

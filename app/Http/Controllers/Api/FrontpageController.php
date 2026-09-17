@@ -359,6 +359,7 @@ class FrontpageController extends Controller
                     'penguji' => (int) DB::table('asesor')->count(),
                     'tuk' => (int) DB::table('tuk')->count(),
                     'peserta_uji' => (int) DB::table('asesi')->count(),
+                    'uji_kompetensi' => (int) DB::table('jadwal_asesmen')->count(),
                 ],
             ]);
         }

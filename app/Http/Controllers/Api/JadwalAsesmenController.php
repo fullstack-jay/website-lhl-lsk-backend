@@ -947,6 +947,33 @@ class JadwalAsesmenController extends Controller
 
         $query = Asesor::whereNotIn('id', $assignedIds);
 
+        // Filter penguji yang memiliki penetapan SK untuk skema sertifikasi pada jadwal ini
+        if (!empty($jadwal->id_skemakkni)) {
+            $idSkema = $jadwal->id_skemakkni;
+            $skemaIds = [(string) $idSkema];
+
+            if (is_numeric($idSkema)) {
+                $kode = \DB::table('skema_kkni')->where('id', $idSkema)->value('kode_skema');
+                if ($kode) {
+                    $skemaIds[] = (string) $kode;
+                }
+            } else {
+                $numericId = \DB::table('skema_kkni')->where('kode_skema', $idSkema)->value('id');
+                if ($numericId) {
+                    $skemaIds[] = (string) $numericId;
+                }
+            }
+
+            $eligibleAsesorIds = \DB::table('asesor_tugasskema')
+                ->whereIn('id_skemakkni', $skemaIds)
+                ->pluck('id_asesor')
+                ->map(fn($val) => (int) $val)
+                ->unique()
+                ->toArray();
+
+            $query->whereIn('id', $eligibleAsesorIds);
+        }
+
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
                 $q->where('nama', 'like', "%{$search}%")
@@ -989,6 +1016,31 @@ class JadwalAsesmenController extends Controller
                 'message' => 'Validasi gagal',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        // Validasi: Penguji wajib memiliki penetapan SK untuk skema jadwal ini
+        if (!empty($jadwal->id_skemakkni)) {
+            $idSkema = $jadwal->id_skemakkni;
+            $skemaIds = [(string) $idSkema];
+            if (is_numeric($idSkema)) {
+                $kode = \DB::table('skema_kkni')->where('id', $idSkema)->value('kode_skema');
+                if ($kode) $skemaIds[] = (string) $kode;
+            } else {
+                $numericId = \DB::table('skema_kkni')->where('kode_skema', $idSkema)->value('id');
+                if ($numericId) $skemaIds[] = (string) $numericId;
+            }
+
+            $hasSkema = \DB::table('asesor_tugasskema')
+                ->where('id_asesor', $request->id_asesor)
+                ->whereIn('id_skemakkni', $skemaIds)
+                ->exists();
+
+            if (!$hasSkema) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Penguji belum memiliki penetapan SK untuk skema sertifikasi pada jadwal ini.',
+                ], 422);
+            }
         }
 
         $exists = \DB::table('jadwal_asesor')

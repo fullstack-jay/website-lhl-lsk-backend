@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -798,10 +799,115 @@ class KomiteController extends Controller
 
         DB::beginTransaction();
         try {
-            // Hapus akun users terkait
-            User::where('username', $komite->no_ktp)->where('level', 'komite-teknis')->delete();
+            // ── 1. Hapus akun users terkait (level komite-teknis) + token sanctum ──
+            $usersTerkait = User::where('username', $komite->no_ktp)
+                ->where('level', 'komite-teknis')
+                ->get();
+            foreach ($usersTerkait as $u) {
+                if (Schema::hasTable('personal_access_tokens')) {
+                    DB::table('personal_access_tokens')->where('tokenable_id', $u->username)->delete();
+                }
+                $u->delete();
+            }
             $komite->delete();
+
+            // ── 2. Bersihkan jejak pendaftaran PESERTA milik orang yang sama ──
+            // Satu akun users bisa dipakai bersama (username = NIK) untuk peran
+            // peserta dan komite. Bila personil komite ini juga pernah mendaftar
+            // sebagai peserta, jejak pendaftarans/asesi-nya ikut dibersihkan agar
+            // NIK bisa didaftarkan ulang tanpa kena validasi unique.
+            // Syarat aman: hanya bila memang ada baris pendaftarans dengan NIK tsb —
+            // personil komite murni (tanpa pendaftaran) tidak tersentuh.
+            $filesToDelete = [];
+            $pendaftaranRows = DB::table('pendaftarans')
+                ->where('no_ktp', $komite->no_ktp)
+                ->when(!empty($komite->email), fn ($q) => $q->orWhere('email', $komite->email))
+                ->when(!empty($komite->no_hp), fn ($q) => $q->orWhere('no_hp', $komite->no_hp))
+                ->get();
+
+            if ($pendaftaranRows->isNotEmpty()) {
+                $regNumbers = $pendaftaranRows->pluck('no_pendaftaran')->filter()->unique()->values();
+                $allIdentifiers = $regNumbers->push($komite->no_ktp)->unique()->values();
+
+                // 2a. Kumpulkan file fisik milik asesi untuk dihapus
+                $kolomFiles = ['foto', 'ktp', 'kk', 'ijazah', 'transkrip', 'suket', 'cv',
+                    'sertifikat', 'dokumen_amdal', 'bukti_keterlibatan', 'sertifikat_amdal',
+                    'form_pendaftaran', 'sertifikat_atpa_ktpa', 'sertifikat_kompetensi_lain'];
+                $asesiRows = DB::table('asesi')
+                    ->where(function ($q) use ($regNumbers, $komite) {
+                        $q->whereIn('no_pendaftaran', $regNumbers)
+                            ->orWhere('no_ktp', $komite->no_ktp);
+                    })->get();
+                foreach ($asesiRows as $a) {
+                    foreach ($kolomFiles as $col) {
+                        if (!empty($a->{$col})) {
+                            $filesToDelete[] = 'foto_asesi/' . $a->{$col};
+                        }
+                    }
+                }
+
+                // 2b. Hapus tabel turunan asesi
+                $tabelTurunan = ['asesi_asesmen', 'asesi_apl02', 'asesmen_ak01', 'asesmen_ak03',
+                    'asesmen_ia03', 'asesmen_ia05', 'asesmen_ia06', 'asesmen_ia08',
+                    'asesmen_ia08asesor', 'asesmen_ia09', 'asesmen_ia11'];
+                foreach ($tabelTurunan as $tbl) {
+                    if (Schema::hasTable($tbl)) {
+                        DB::table($tbl)->whereIn('id_asesi', $allIdentifiers)->delete();
+                    }
+                }
+                if (Schema::hasTable('asesi_doc')) {
+                    DB::table('asesi_doc')->whereIn('id_asesi', $allIdentifiers)->get()
+                        ->each(function ($d) use (&$filesToDelete) {
+                            if (!empty($d->file)) {
+                                $filesToDelete[] = 'foto_asesi/' . $d->file;
+                            }
+                        });
+                    DB::table('asesi_doc')->whereIn('id_asesi', $allIdentifiers)->delete();
+                }
+                if (Schema::hasTable('asesi_pembayaran')) {
+                    DB::table('asesi_pembayaran')->whereIn('id_asesi', $allIdentifiers)->get()
+                        ->each(function ($p) use (&$filesToDelete) {
+                            if (!empty($p->bukti_bayar)) {
+                                $filesToDelete[] = 'foto_buktibayar/' . $p->bukti_bayar;
+                            }
+                        });
+                    DB::table('asesi_pembayaran')->whereIn('id_asesi', $allIdentifiers)->delete();
+                }
+                if (Schema::hasTable('asesi_apl02doc')) {
+                    DB::table('asesi_apl02doc')->whereIn('id_asesi', $allIdentifiers)->get()
+                        ->each(function ($d) use (&$filesToDelete) {
+                            if (!empty($d->file)) {
+                                $filesToDelete[] = 'foto_apl02/' . $d->file;
+                            }
+                        });
+                    DB::table('asesi_apl02doc')->whereIn('id_asesi', $allIdentifiers)->delete();
+                }
+
+                // 2c. Hapus pendaftarans + asesi (bersih permanen)
+                DB::table('pendaftarans')
+                    ->where(function ($q) use ($allIdentifiers) {
+                        $q->whereIn('no_pendaftaran', $allIdentifiers)
+                            ->orWhereIn('no_ktp', $allIdentifiers);
+                    })->delete();
+                DB::table('asesi')
+                    ->where(function ($q) use ($allIdentifiers) {
+                        $q->whereIn('no_pendaftaran', $allIdentifiers)
+                            ->orWhereIn('no_ktp', $allIdentifiers);
+                    })->delete();
+            }
+
             DB::commit();
+
+            // File fisik dihapus SETELAH commit sukses
+            foreach (array_unique($filesToDelete) as $file) {
+                if (function_exists('storage_path') && \Illuminate\Support\Facades\Storage::disk('public')->exists($file)) {
+                    \Illuminate\Support\Facades\Storage::disk('public')->delete($file);
+                }
+                $absPublic = public_path($file);
+                if (file_exists($absPublic)) {
+                    @unlink($absPublic);
+                }
+            }
 
             return response()->json([
                 'success' => true,

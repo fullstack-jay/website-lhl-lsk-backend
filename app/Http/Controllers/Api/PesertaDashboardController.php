@@ -100,15 +100,15 @@ class PesertaDashboardController extends Controller
             ->orderBy('id', 'desc')
             ->first();
 
-        // ── 4. Dokumen wajib DINAMIS dari devsyarat (basis 4 Syarat Pokok) ──
-        $wajib = AsesiPersyaratanpokok::wajib()->aktif()->orderBy('id')->get();
+        // ── 4. Dokumen wajib: 4 Syarat Pokok AMDAL (ijazah, sertifikat_amdal, bukti_keterlibatan, dokumen_amdal) ──
+        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $dokumenAda = 0;
-        foreach ($wajib as $p) {
-            if ($this->hasDocumentFile($asesi, $p->shortcode)) {
+        foreach ($wajibShortcodes as $sc) {
+            if ($this->hasDocumentFile($asesi, $sc)) {
                 $dokumenAda++;
             }
         }
-        $dokLengkap = $wajib->count() > 0 && $dokumenAda === $wajib->count();
+        $dokLengkap = ($dokumenAda === count($wajibShortcodes));
 
         // Zero-date guard tgl_lahir (idem PESERTA_ROLE.md §2.1) & kelengkapan dokumen
         $tglLahir = (string) $asesi->tgl_lahir;
@@ -121,8 +121,6 @@ class PesertaDashboardController extends Controller
         $verifDok = is_array($asesi->verifikasi_dokumen)
             ? $asesi->verifikasi_dokumen
             : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
-
-        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $allWajibVerified = true;
         foreach ($wajibShortcodes as $sc) {
             $alias = match ($sc) {
@@ -255,7 +253,7 @@ class PesertaDashboardController extends Controller
                 ]),
 
                 'ringkasan' => [
-                    'dokumen_wajib' => ['ada' => $dokumenAda, 'total' => $wajib->count()],
+                    'dokumen_wajib' => ['ada' => $dokumenAda, 'total' => count($wajibShortcodes)],
                     'profil_terverifikasi' => $profilTerverifikasi,   // ⭐ ACC admin / Syarat Pokok Terverifikasi
                     'verifikasi' => $asesi->verifikasi,               // ⭐ nilai mentah 'P'|'V'
                     'syarat_pokok_terverifikasi' => $allWajibVerified,

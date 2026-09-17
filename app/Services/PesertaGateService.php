@@ -165,28 +165,32 @@ class PesertaGateService
         $pendidikanOk = $pendidikanData['ok'];
         $pendidikanLabel = $pendidikanData['label'];
 
-        // ── Syarat 3: dokumen pokok wajib lengkap ──
-        $wajib = AsesiPersyaratanpokok::wajib()->aktif()->orderBy('id')->get();
+        // ── Syarat 3: dokumen pokok wajib lengkap (4 Syarat Pokok AMDAL) ──
+        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $ada = 0;
         $kurang = [];
-        foreach ($wajib as $p) {
-            if ($this->hasDocumentFile($asesi, $p->shortcode)) {
+        foreach ($wajibShortcodes as $sc) {
+            if ($this->hasDocumentFile($asesi, $sc)) {
                 $ada++;
             } else {
                 $kurang[] = [
-                    'persyaratan' => $p->persyaratan,
-                    'shortcode' => $p->shortcode,
+                    'persyaratan' => match ($sc) {
+                        'ijazah' => 'Scan Ijazah',
+                        'sertifikat_amdal' => 'Sertifikat Pelatihan AMDAL',
+                        'bukti_keterlibatan' => 'Bukti Keterlibatan AMDAL',
+                        'dokumen_amdal' => 'Salinan Dokumen AMDAL',
+                        default => $sc,
+                    },
+                    'shortcode' => $sc,
                 ];
             }
         }
-        $dokLengkap = $wajib->count() > 0 && $ada === $wajib->count();
+        $dokLengkap = ($ada === count($wajibShortcodes));
 
         // ── Syarat 4: profil & dokumen wajib sudah diverifikasi admin ──
         $verifDok = is_array($asesi->verifikasi_dokumen)
             ? $asesi->verifikasi_dokumen
             : (is_string($asesi->verifikasi_dokumen) ? (json_decode($asesi->verifikasi_dokumen, true) ?: []) : []);
-
-        $wajibShortcodes = ['ijazah', 'sertifikat_amdal', 'bukti_keterlibatan', 'dokumen_amdal'];
         $allWajibVerified = true;
         foreach ($wajibShortcodes as $sc) {
             $alias = match ($sc) {

@@ -71,6 +71,10 @@ class PesertaDashboardController extends Controller
                         'nohp' => $user->no_telp,
                         'angkatan' => null,
                         'foto_url' => null,
+                        'status_sertifikat' => 'BELUM_UPLOAD',
+                        'no_sertifikat' => null,
+                        'jenis_sertifikat' => null,
+                        'file_sertifikat_aktif' => null,
                     ],
                     'asesmen_aktif' => ['ada' => false],
                     'langkah' => $this->buildLangkah([
@@ -203,6 +207,10 @@ class PesertaDashboardController extends Controller
                     'nohp' => $asesi->nohp ?: $user->no_telp,
                     'angkatan' => $asesi->angkatan ? (int) $asesi->angkatan : null,
                     'foto_url' => $asesi->foto ? asset('foto_asesi/' . $asesi->foto) : null,
+                    'status_sertifikat' => $asesi->status_sertifikat ?? 'BELUM_UPLOAD',
+                    'no_sertifikat' => $asesi->no_sertifikat,
+                    'file_sertifikat_aktif' => $asesi->file_sertifikat_aktif ? asset('foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
+                    'jenis_sertifikat' => $asesi->jenis_sertifikat,
                 ],
 
                 'asesmen_aktif' => [

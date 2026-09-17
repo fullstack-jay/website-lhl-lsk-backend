@@ -156,10 +156,13 @@ class PesertaDashboardController extends Controller
                 ->first();
         }
 
-        // ── 6. Jadwal + TUK ──
+        // ── 6. Jadwal + TUK (hanya jadwal yang belum diarsipkan) ──
         $jadwal = null;
         if ($asesmen && $asesmen->id_jadwal) {
-            $jadwal = DB::table('jadwal_asesmen')->where('id', $asesmen->id_jadwal)->first();
+            $jadwal = DB::table('jadwal_asesmen')
+                ->where('id', $asesmen->id_jadwal)
+                ->where('status', '!=', 'Selesai')
+                ->first();
         }
         $tukNama = null;
         $tukAlamat = null;

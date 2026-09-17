@@ -166,11 +166,13 @@ class AsesmenSayaController extends Controller
             $dokumenKurang = [];
         }
 
-        // ── Detail Jadwal Asesmen (jika sudah dijadwalkan) ──
+        // ── Detail Jadwal Asesmen (jika sudah dijadwalkan & belum diarsipkan) ──
         $jadwalData = null;
+        $idJadwalAktif = null;
         if (!empty($m->id_jadwal)) {
             $j = $m->jadwal ?? \App\Models\JadwalAsesmen::with(['tuk', 'asesor'])->find($m->id_jadwal);
-            if ($j) {
+            if ($j && $j->status !== 'Selesai') {
+                $idJadwalAktif = (int) $j->id;
                 $tglAwal = $j->tgl_asesmen ? (is_string($j->tgl_asesmen) ? substr($j->tgl_asesmen, 0, 10) : $j->tgl_asesmen->format('Y-m-d')) : null;
                 $tglAkhir = $j->tgl_asesmen_akhir ? (is_string($j->tgl_asesmen_akhir) ? substr($j->tgl_asesmen_akhir, 0, 10) : $j->tgl_asesmen_akhir->format('Y-m-d')) : null;
                 $jadwalData = [
@@ -303,7 +305,7 @@ class AsesmenSayaController extends Controller
             $m->status,
             $m->biaya_asesmen,
             $m->status_asesmen,
-            $m->id_jadwal,
+            $idJadwalAktif,
             $modePupr,
             (int) $m->id,
             $penilaian
@@ -316,7 +318,7 @@ class AsesmenSayaController extends Controller
             'status' => $m->status,                       // P | A | R
             'status_asesmen' => $m->status_asesmen,       // P | K | BK | TL
             'biaya_asesmen' => $m->biaya_asesmen,         // P | K | L
-            'id_jadwal' => $m->id_jadwal,
+            'id_jadwal' => $idJadwalAktif,
             'jadwal' => $jadwalData,
             'biaya' => $m->biaya ? (int) $m->biaya : null,
             'biaya_formatted' => $m->biaya ? number_format((float) $m->biaya, 0, ',', '.') : null,
@@ -388,7 +390,10 @@ class AsesmenSayaController extends Controller
                     if ($penilaian) {
                         return ['Asesmen telah selesai dinilai oleh Penguji. Menunggu proses review & penetapan hasil oleh Tim Komite Teknis LSK.', 'yellow', null];
                     }
-                    return ['Pendaftaran diterima dan dijadwalkan.', 'green', $aksi];
+                    if ($idJadwal) {
+                        return ['Pendaftaran diterima dan dijadwalkan.', 'green', $aksi];
+                    }
+                    return ['Pendaftaran telah disetujui. Menunggu penetapan jadwal uji kompetensi oleh admin.', 'blue', $aksi];
             }
         }
 

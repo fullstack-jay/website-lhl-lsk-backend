@@ -217,7 +217,7 @@ class PesertaGateService
             ],
             'dokumen' => [
                 'ada' => $ada,
-                'total' => $wajib->count(),
+                'total' => count($wajibShortcodes),
                 'lengkap' => $dokLengkap,
                 'kurang' => $kurang,
             ],

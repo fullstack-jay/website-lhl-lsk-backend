@@ -1566,7 +1566,7 @@ class AsesiController extends Controller
             $dokPersyaratan[$key] = [
                 'status' => $status,
                 'file' => $file,
-                'url' => $file ? asset('foto_asesi/' . $file) : null,
+                'url' => $file ? asset('storage/foto_asesi/' . $file) : null,
                 'label' => $item['label'],
             ];
         }
@@ -1615,7 +1615,7 @@ class AsesiController extends Controller
             $dokItem = [
                 'status' => $status,
                 'file' => $file,
-                'url' => $file ? asset('foto_asesi/' . $file) : null,
+                'url' => $file ? asset('storage/foto_asesi/' . $file) : null,
                 'label' => $item['label'],
             ];
             $dokTambahan[$key] = $dokItem;
@@ -1891,7 +1891,7 @@ class AsesiController extends Controller
             'is_rejected' => $remedialPembayaran->status === 'D',
             'tgl_bayar' => $remedialPembayaran->tgl_bayar,
             'file' => $remedialPembayaran->file,
-            'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
+            'bukti_url' => !empty($remedialPembayaran->file) ? asset('storage/foto_asesibayar/' . $remedialPembayaran->file) : null,
         ] : null;
         $data['status_remedial'] = $statusRemedial;
 
@@ -2163,7 +2163,7 @@ class AsesiController extends Controller
                     'tgl_bayar' => $p->tgl_bayar,
                     'jam_bayar' => $p->jam_bayar ? substr((string) $p->jam_bayar, 0, 5) : null,
                     'file' => $p->file,
-                    'bukti_url' => !empty($p->file) ? asset('foto_asesibayar/' . $p->file) : null,
+                    'bukti_url' => !empty($p->file) ? asset('storage/foto_asesibayar/' . $p->file) : null,
                     'status' => $p->status,
                     'status_label' => $p->status === 'V' ? 'Telah Divalidasi' : ($p->status === 'D' ? 'Ditolak' : 'Menunggu Validasi'),
                     'catatan_penolakan' => $p->catatan_penolakan ?? null,

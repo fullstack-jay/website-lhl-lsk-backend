@@ -101,7 +101,7 @@ class DevSyaratController extends Controller
                 'persyaratan' => $p->persyaratan,
                 'shortcode' => $p->shortcode,
                 'file' => $file,
-                'url' => $file ? asset('foto_asesi/' . $file) : null,
+                'url' => $file ? asset('storage/foto_asesi/' . $file) : null,
                 'ada' => !empty($file),     // badge hijau "Ada" / merah "Belum Ada"
             ];
         });

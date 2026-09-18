@@ -207,10 +207,10 @@ class PesertaDashboardController extends Controller
                     'email' => $asesi->email ?: $user->email,
                     'nohp' => $asesi->nohp ?: $user->no_telp,
                     'angkatan' => $asesi->angkatan ? (int) $asesi->angkatan : null,
-                    'foto_url' => $asesi->foto ? asset('foto_asesi/' . $asesi->foto) : null,
+                    'foto_url' => $asesi->foto ? asset('storage/foto_asesi/' . $asesi->foto) : null,
                     'status_sertifikat' => $asesi->status_sertifikat ?? 'BELUM_UPLOAD',
                     'no_sertifikat' => $asesi->no_sertifikat,
-                    'file_sertifikat_aktif' => $asesi->file_sertifikat_aktif ? asset('foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
+                    'file_sertifikat_aktif' => $asesi->file_sertifikat_aktif ? asset('storage/foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
                     'jenis_sertifikat' => $asesi->jenis_sertifikat,
                 ],
 
@@ -233,7 +233,7 @@ class PesertaDashboardController extends Controller
                         'jumlah_bayar' => (int) ($bayar->nominal ?? 0),
                         'jumlah_bayar_formatted' => number_format((float) ($bayar->nominal ?? 0), 0, ',', '.'),
                         'tanggal_bayar' => $this->fmtDate($bayar->tgl_bayar ?? null),
-                        'bukti_bayar_url' => !empty($bayar->file) ? asset('foto_buktibayar/' . $bayar->file) : null,
+                        'bukti_bayar_url' => !empty($bayar->file) ? asset('storage/foto_buktibayar/' . $bayar->file) : null,
                         'verifikasi_bayar' => (bool) $terverifikasi,
                         'status_bayar' => $bayar->status ?? 'P',   // P=Pending | V=Terverifikasi
                     ] : null,

@@ -296,7 +296,7 @@ class AsesmenSayaController extends Controller
                 'nominal_formatted' => number_format((float) $remedialPembayaran->nominal, 0, ',', '.'),
                 'tgl_bayar' => $remedialPembayaran->tgl_bayar,
                 'file' => $remedialPembayaran->file,
-                'bukti_url' => !empty($remedialPembayaran->file) ? asset('foto_asesibayar/' . $remedialPembayaran->file) : null,
+                'bukti_url' => !empty($remedialPembayaran->file) ? asset('storage/foto_asesibayar/' . $remedialPembayaran->file) : null,
             ];
         }
 

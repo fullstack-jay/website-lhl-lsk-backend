@@ -314,6 +314,7 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::post('/kewajiban/evaluasi/{tahunKe}', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'submitEvaluasi']);
     Route::get('/kewajiban/logbook', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'logbook']);
     Route::post('/kewajiban/logbook', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'storeLogbook']);
+    Route::delete('/kewajiban/logbook/{id}', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'destroyLogbook']);
     Route::get('/kewajiban/notifikasi', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'notifikasi']);
     Route::post('/kewajiban/notifikasi/tandai-dibaca', [\App\Http\Controllers\Api\KewajibanPesertaController::class, 'tandaiDibaca']);
 

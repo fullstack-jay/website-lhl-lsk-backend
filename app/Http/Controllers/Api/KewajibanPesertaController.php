@@ -645,14 +645,21 @@ class KewajibanPesertaController extends Controller
             return $error;
         }
 
-        $query = DB::table('asesi_logbook')
-            ->where('id_asesi', $asesi->no_pendaftaran);
+        // ── Penomoran berlanjut antar-tahun (sequential continuity) ──
+        // Nomor urut dihitung kronologis atas SELURUH tahun (2026 → 2027 → dst),
+        // jadi dokumen pertama tahun baru otomatis melanjutkan nomor tahun lalu.
+        // Filter ?tahun= hanya menyaring tampilan, nomor urut tetap global.
+        $all = DB::table('asesi_logbook')
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->orderBy('tahun')
+            ->orderBy('tanggal_mulai')
+            ->orderBy('id')
+            ->get()
+            ->values();
 
-        if ($request->filled('tahun')) {
-            $query->where('tahun', $request->tahun);
-        }
-
-        $rows = $query->orderBy('tanggal_mulai', 'desc')->get()->map(function ($r) {
+        $rows = $all->map(function ($r, $i) {
+            $r->db_id = $r->id;            // untuk edit (update in-place) & delete
+            $r->nomor_urut = $i + 1;       // nomor dokumen berlanjut lintas tahun
             $r->file_surat_tugas_lpjp_url = $r->file_surat_tugas_lpjp
                 ? asset(self::dir() . '/' . $r->file_surat_tugas_lpjp) : null;
             $r->file_referensi_pemrakarsa_url = $r->file_referensi_pemrakarsa
@@ -661,6 +668,10 @@ class KewajibanPesertaController extends Controller
                 ? asset(self::dir() . '/' . $r->file_ba_persetujuan_kpa) : null;
             return $r;
         });
+
+        if ($request->filled('tahun')) {
+            $rows = $rows->filter(fn ($r) => (int) $r->tahun === (int) $request->tahun)->values();
+        }
 
         return response()->json([
             'success' => true,
@@ -693,7 +704,25 @@ class KewajibanPesertaController extends Controller
         DB::beginTransaction();
         try {
             $saved = 0;
+            $savedIds = [];
+            $filesToDelete = []; // file lama yang digantikan — dihapus setelah commit
             foreach ($rows as $i => $row) {
+                // ── MODE EDIT: db_id terisi → update in-place (tanpa duplikasi) ──
+                $existing = null;
+                if (!empty($row['db_id'])) {
+                    $existing = DB::table('asesi_logbook')
+                        ->where('id', (int) $row['db_id'])
+                        ->where('id_asesi', $asesi->no_pendaftaran)
+                        ->first();
+                    if (!$existing) {
+                        DB::rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => "Baris " . ($i + 1) . ": logbook dengan id {$row['db_id']} tidak ditemukan",
+                        ], 404);
+                    }
+                }
+
                 // ── Validasi inti ──
                 $required = ['tahun', 'nama_kegiatan', 'tipe_penyusun', 'nama_lpjp',
                     'telepon_email_lpjp', 'nama_pemrakarsa', 'kpa_tingkat',
@@ -768,6 +797,10 @@ class KewajibanPesertaController extends Controller
                         $fileName = time() . '_logbook_' . uniqid() . '.pdf';
                         $dest = public_path(self::dir());
                         if (!file_exists($dest)) mkdir($dest, 0755, true);
+                        // edit: file baru menggantikan file lama → jadwalkan hapus setelah commit
+                        if ($existing && !empty($existing->{$bf}) && $existing->{$bf} !== $fileName) {
+                            $filesToDelete[] = $existing->{$bf};
+                        }
                         $file->move($dest, $fileName);
                         $buktiData[$bf] = $fileName;
                     } elseif (!empty($row[$bf])) {
@@ -777,9 +810,8 @@ class KewajibanPesertaController extends Controller
                     }
                 }
 
-                // Insert row
-                DB::table('asesi_logbook')->insert(array_merge([
-                    'id_asesi' => $asesi->no_pendaftaran,
+                // Simpan row (insert baru ATAU update in-place bila db_id terisi)
+                $payload = array_merge([
                     'tahun' => (int) $row['tahun'],
                     'nama_kegiatan' => $row['nama_kegiatan'],
                     'lokasi_kegiatan' => $row['lokasi_kegiatan'] ?? null,
@@ -805,17 +837,44 @@ class KewajibanPesertaController extends Controller
                     'ahli_bidang' => implode(',', $ahli),
                     'ahli_bidang_lainnya' => $row['ahli_bidang_lainnya'] ?? null,
                     'spesifikasi_tenaga_ahli' => $row['spesifikasi_tenaga_ahli'],
-                    'waktu' => now(),
-                ], $buktiData));
+                ], $buktiData);
+
+                if ($existing) {
+                    // EDIT: update baris yang sama; bukti lama dipertahankan bila
+                    // tidak dikirim ulang dan tidak ada file baru
+                    $update = $payload;
+                    foreach ($buktiFields as $bf) {
+                        if ($buktiData[$bf] === null && !empty($existing->{$bf})) {
+                            $update[$bf] = $existing->{$bf};
+                        }
+                    }
+                    $update['waktu'] = now();
+                    DB::table('asesi_logbook')->where('id', $existing->id)->update($update);
+                    $savedIds[] = (int) $existing->id;
+                } else {
+                    $payload['id_asesi'] = $asesi->no_pendaftaran;
+                    $payload['waktu'] = now();
+                    DB::table('asesi_logbook')->insert($payload);
+                    $savedIds[] = (int) DB::getPdo()->lastInsertId();
+                }
 
                 $saved++;
             }
 
             DB::commit();
 
+            // File lama yang digantikan dihapus setelah commit sukses
+            foreach (array_unique($filesToDelete) as $f) {
+                $abs = public_path(self::dir() . '/' . $f);
+                if (file_exists($abs)) {
+                    @unlink($abs);
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'message' => $saved . ' logbook kegiatan berhasil disimpan',
+                'data' => ['ids' => $savedIds],
             ], 201);
 
         } catch (\Exception $e) {
@@ -826,6 +885,50 @@ class KewajibanPesertaController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * DELETE /logbook/{id} — hapus satu baris logbook milik peserta ini.
+     * Nomor urut dokumen pada daftar berikutnya menyesuaikan otomatis
+     * (dihitung ulang saat GET /logbook dengan sequential continuity).
+     */
+    public function destroyLogbook(Request $request, $id): JsonResponse
+    {
+        [$asesi, $error] = $this->resolvePeserta($request);
+        if ($error) {
+            return $error;
+        }
+
+        $row = DB::table('asesi_logbook')
+            ->where('id', (int) $id)
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->first();
+
+        if (!$row) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Logbook tidak ditemukan',
+            ], 404);
+        }
+
+        DB::table('asesi_logbook')->where('id', $row->id)->delete();
+
+        // Bersihkan 3 file bukti milik baris ini
+        foreach (array_filter([
+            $row->file_surat_tugas_lpjp,
+            $row->file_referensi_pemrakarsa,
+            $row->file_ba_persetujuan_kpa,
+        ]) as $f) {
+            $abs = public_path(self::dir() . '/' . $f);
+            if (file_exists($abs)) {
+                @unlink($abs);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Logbook kegiatan berhasil dihapus',
+        ]);
     }
 
     // ════════════════════════════════════════════════════════════════

@@ -180,20 +180,29 @@ class UserManagementController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string|max:50',
-            'nama_lengkap' => 'required|string|max:100',
+            'username' => [
+                'required', 'string', 'min:3', 'max:50',
+                'regex:/^\S*$/u',   // tidak boleh ada spasi
+            ],
+            'nama_lengkap' => 'required|string|max:150',
             'no_induk' => 'nullable|string|max:100',
             'no_ktp' => 'nullable|string|max:50',
-            'password' => 'required|string|min:5',
+            'password' => 'required|string|min:6',
             'passwordkonfirmasi' => 'required|string|same:password',
-            'level' => 'required|in:admin,user,penguji,komite-teknis',
+            'level' => 'nullable|in:admin,user,penguji,komite-teknis',   // kosong → default admin (form Tambah Pengguna Role Admin)
             'blokir' => 'nullable|in:Y,N',
+            'foto' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
         ], [
-            'username.required' => 'Username wajib diisi',
-            'nama_lengkap.required' => 'Nama lengkap wajib diisi',
-            'password.required' => 'Kata Sandi wajib diisi',
-            'passwordkonfirmasi.same' => 'Kata Sandi dan Kata Sandi (Ulangi) harus sama',
-            'level.required' => 'Level wajib dipilih',
+            'username.required' => 'Username wajib diisi.',
+            'username.min' => 'Username minimal 3 karakter.',
+            'username.regex' => 'Username tidak boleh mengandung spasi.',
+            'nama_lengkap.required' => 'Nama lengkap wajib diisi.',
+            'password.required' => 'Kata sandi wajib diisi.',
+            'password.min' => 'Kata sandi minimal 6 karakter.',
+            'passwordkonfirmasi.same' => 'Kata Sandi dan Kata Sandi (Ulangi) harus sama.',
+            'foto.image' => 'File foto harus berupa gambar.',
+            'foto.mimes' => 'Format foto harus JPG, JPEG, atau PNG.',
+            'foto.max' => 'Ukuran foto maksimal 2MB.',
         ]);
 
         if ($validator->fails()) {
@@ -209,21 +218,40 @@ class UserManagementController extends Controller
         if (User::where('username', $request->username)->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Maaf Pengguna dengan Username tersebut Sudah Ada',
+                'message' => 'Maaf, pengguna dengan Username tersebut sudah ada.',
             ], 409);
         }
 
+        $username = strip_tags(trim($request->username));
+        $namaLengkap = strip_tags(trim($request->nama_lengkap));
+
+        // ── Upload foto pengguna (public/foto_pengguna) ──
+        $namaFileFoto = null;
+        if ($request->hasFile('foto')) {
+            $file = $request->file('foto');
+            $namaFileFoto = time() . '_' . $username . '.' . strtolower($file->getClientOriginalExtension());
+            $destPath = public_path('foto_pengguna');
+            if (!file_exists($destPath)) {
+                mkdir($destPath, 0755, true);
+            }
+            $file->move($destPath, $namaFileFoto);
+        }
+
         try {
+            $level = $request->input('level', 'admin');          // kosong → admin (form Tambah Pengguna Role Admin)
+            $noInduk = $request->input('no_induk', $username);   // fallback username (anti error NOT NULL)
             $user = new User([
-                'username' => strip_tags(trim($request->username)),
+                'username' => $username,
                 'password' => Hash::make($request->password),   // bcrypt (bukan MD5)
-                'nama_lengkap' => strip_tags(trim($request->nama_lengkap)),
-                'no_induk' => $request->no_induk,
-                'no_ktp' => $request->no_ktp ?: $request->no_induk,
-                'level' => $request->level,
+                'nama_lengkap' => $namaLengkap,
+                'no_induk' => $noInduk,
+                'no_ktp' => $request->no_ktp ?: $username,
+                'level' => $level,
                 'blokir' => $request->input('blokir', 'N'),     // ✅ fix: ikut di-INSERT
+                'foto' => $namaFileFoto,
             ]);
             $user->id_session = md5($user->username);           // ⭐ kunci pivot hak akses
+            $user->waktu = now();
             $user->save();
 
             // ⭐ Auto-sync profil ke tabel asesor / komite bila level diubah
@@ -282,10 +310,15 @@ class UserManagementController extends Controller
                 }
             }
 
+            $data = $this->transformUser($user, 0);
+            $data['foto_url'] = $user->foto ? url('foto_pengguna/' . $user->foto) : null;
+
             return response()->json([
                 'success' => true,
-                'message' => 'Pengguna berhasil ditambahkan',
-                'data' => $this->transformUser($user, 0),
+                'message' => $user->level === 'admin'
+                    ? 'Pengguna Admin berhasil ditambahkan.'
+                    : 'Pengguna berhasil ditambahkan',
+                'data' => $data,
             ], 201);
 
         } catch (\Exception $e) {

@@ -146,12 +146,14 @@ class FrontpageController extends Controller
             'waktu_terbit' => 'nullable|date_format:H:i:s,H:i',
 
             // Upload gambar
-            'file' => 'nullable|image|mimes:jpeg,jpg,png,gif,webp|max:5120',
+            'file' => 'nullable|file|mimes:webp|max:5120',
+            'konten_foto' => 'nullable|file|mimes:webp|max:5120',
         ], [
             'kategori.required' => 'Kategori wajib dipilih',
             'kategori.exists' => 'Kategori tidak ditemukan',
             'file.image' => 'File harus berupa gambar',
-            'file.mimes' => 'Gambar harus berformat jpg/png/gif/jpeg/webp',
+            'file.mimes' => 'Gambar wajib berformat WebP (.webp)',
+            'konten_foto.mimes' => 'Gambar wajib berformat WebP (.webp)',
             'file.max' => 'Ukuran gambar maksimal 5MB',
         ]);
 
@@ -240,11 +242,13 @@ class FrontpageController extends Controller
             'tanggal_terbit' => 'nullable|date',
             'waktu_terbit' => 'nullable|date_format:H:i:s,H:i',
 
-            'file' => 'nullable|image|mimes:jpeg,jpg,png,gif,webp|max:5120',
+            'file' => 'nullable|file|mimes:webp|max:5120',
+            'konten_foto' => 'nullable|file|mimes:webp|max:5120',
         ], [
             'kategori.exists' => 'Kategori tidak ditemukan',
             'file.image' => 'File harus berupa gambar',
-            'file.mimes' => 'Gambar harus berformat jpg/png/gif/jpeg/webp',
+            'file.mimes' => 'Gambar wajib berformat WebP (.webp)',
+            'konten_foto.mimes' => 'Gambar wajib berformat WebP (.webp)',
             'file.max' => 'Ukuran gambar maksimal 5MB',
         ]);
 
@@ -399,11 +403,10 @@ class FrontpageController extends Controller
      */
     private function handleUpload(Request $request, Frontpage $konten, bool $isCreate): void
     {
-        if (!$request->hasFile('file')) {
+        $file = $request->file('file') ?? $request->file('konten_foto');
+        if (!$file) {
             return;
         }
-
-        $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
         $fileName = time() . md5($file->getClientOriginalName() . microtime()) . '.' . $ext;
 

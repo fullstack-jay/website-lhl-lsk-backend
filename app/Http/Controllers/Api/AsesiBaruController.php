@@ -72,27 +72,61 @@ class AsesiBaruController extends Controller
             return $this->rekapitulasi();
         }
 
-        // Filter dasar semua tab (padanan: WHERE verifikasi='P' AND blokir='N')
+        // Filter dasar: mendukung verifikasi 'P' maupun 'V' (agar peserta yang sudah diverifikasi dokumennya tetap muncul di tab terjadwal/belum terjadwal)
         $query = Asesi::query()
-            ->where('verifikasi', 'P')
+            ->whereIn('verifikasi', ['P', 'V'])
             ->where('blokir', 'N')
             ->orderBy('tgl_daftar', 'desc');
 
         switch ($tab) {
             case 'terjadwal':
-                // punya pendaftaran skema dengan id_jadwal terisi
-                $query->whereHas('pendaftaran', fn ($q) => $q->whereNotNull('id_jadwal'));
+                // punya pendaftaran skema dengan id_jadwal terisi valid (bukan null, kosong, atau 0)
+                $query->where(function ($sub) {
+                    $sub->whereHas('pendaftaran', function ($q) {
+                        $q->whereNotNull('id_jadwal')->where('id_jadwal', '!=', '')->where('id_jadwal', '!=', '0');
+                    })->orWhereExists(function ($raw) {
+                        $raw->select(DB::raw(1))->from('asesi_asesmen')
+                            ->where(function ($w) {
+                                $w->whereColumn('asesi_asesmen.id_asesi', 'asesi.no_pendaftaran')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.no_ktp')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.id');
+                            })
+                            ->whereNotNull('asesi_asesmen.id_jadwal')
+                            ->where('asesi_asesmen.id_jadwal', '!=', '')
+                            ->where('asesi_asesmen.id_jadwal', '!=', '0');
+                    });
+                });
                 break;
 
             case 'belum_terjadwal':
-                // punya pendaftaran skema dengan id_jadwal NULL
-                $query->whereHas('pendaftaran', fn ($q) => $q->whereNull('id_jadwal'));
+                // punya pendaftaran skema dengan id_jadwal kosong / null / 0
+                $query->where(function ($sub) {
+                    $sub->whereHas('pendaftaran', function ($q) {
+                        $q->where(fn ($q2) => $q2->whereNull('id_jadwal')->orWhere('id_jadwal', '')->orWhere('id_jadwal', '0'));
+                    })->orWhereExists(function ($raw) {
+                        $raw->select(DB::raw(1))->from('asesi_asesmen')
+                            ->where(function ($w) {
+                                $w->whereColumn('asesi_asesmen.id_asesi', 'asesi.no_pendaftaran')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.no_ktp')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.id');
+                            })
+                            ->where(fn ($q2) => $q2->whereNull('asesi_asesmen.id_jadwal')->orWhere('asesi_asesmen.id_jadwal', '')->orWhere('asesi_asesmen.id_jadwal', '0'));
+                    });
+                });
                 break;
 
             case 'belum_skema':
             default:
                 // Tab 1: TIDAK punya baris asesi_asesmen sama sekali
-                $query->whereDoesntHave('pendaftaran');
+                $query->whereDoesntHave('pendaftaran')
+                    ->whereNotExists(function ($raw) {
+                        $raw->select(DB::raw(1))->from('asesi_asesmen')
+                            ->where(function ($w) {
+                                $w->whereColumn('asesi_asesmen.id_asesi', 'asesi.no_pendaftaran')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.no_ktp')
+                                  ->orWhereColumn('asesi_asesmen.id_asesi', 'asesi.id');
+                            });
+                    });
                 break;
         }
 
@@ -130,19 +164,48 @@ class AsesiBaruController extends Controller
      */
     private function rekapitulasi(): JsonResponse
     {
-        $rows = DB::table('asesi_asesmen as m')
-            ->join('skema_kkni as sk', 'sk.id', '=', 'm.id_skemakkni')
-            ->selectRaw("
-                sk.id, sk.kode_skema, sk.judul,
-                COUNT(*) AS terdaftar,
-                SUM(m.id_jadwal IS NOT NULL) AS terjadwal,
-                SUM(m.id_jadwal IS NULL) AS belum_terjadwal
-            ")
-            ->where('m.status_asesmen', 'P')
-            ->whereNull('m.keputusan_asesor')
-            ->groupBy('sk.id', 'sk.kode_skema', 'sk.judul')
-            ->orderBy('sk.id')
-            ->get();
+        // Ambil seluruh skema dari skema_kkni (persis logika modul asesibaru PHP Native)
+        $skemas = SkemaKkni::where('aktif', 'Y')->orderBy('id', 'asc')->get();
+        if ($skemas->isEmpty()) {
+            $skemas = SkemaKkni::orderBy('id', 'asc')->get();
+        }
+
+        // Agregasi pendaftaran per skema
+        $rows = $skemas->map(function ($sk) {
+            $pendaftaran = DB::table('asesi_asesmen')
+                ->where('id_skemakkni', $sk->id)
+                ->get();
+
+            // Terdaftar: status_asesmen='P' (atau null/kosong) & keputusan_asesor belum ditentukan
+            $terdaftar = $pendaftaran->filter(function ($p) {
+                $statusOk = empty($p->status_asesmen) || $p->status_asesmen === 'P';
+                $keputusanOk = empty($p->keputusan_asesor);
+                return $statusOk && $keputusanOk;
+            })->count();
+
+            // Terjadwal: id_jadwal terisi valid & status_asesmen='P' (atau null/kosong)
+            $terjadwal = $pendaftaran->filter(function ($p) {
+                $jadwalOk = !empty($p->id_jadwal) && $p->id_jadwal !== '0';
+                $statusOk = empty($p->status_asesmen) || $p->status_asesmen === 'P';
+                return $jadwalOk && $statusOk;
+            })->count();
+
+            // Belum Terjadwal: id_jadwal null/kosong/'0' & status_asesmen='P' (atau null/kosong)
+            $belumTerjadwal = $pendaftaran->filter(function ($p) {
+                $jadwalEmpty = empty($p->id_jadwal) || $p->id_jadwal === '0';
+                $statusOk = empty($p->status_asesmen) || $p->status_asesmen === 'P';
+                return $jadwalEmpty && $statusOk;
+            })->count();
+
+            return [
+                'id' => $sk->id,
+                'kode_skema' => $sk->kode_skema,
+                'judul' => $sk->judul,
+                'terdaftar' => (int) $terdaftar,
+                'terjadwal' => (int) $terjadwal,
+                'belum_terjadwal' => (int) $belumTerjadwal,
+            ];
+        });
 
         return response()->json([
             'success' => true,
@@ -169,7 +232,19 @@ class AsesiBaruController extends Controller
     private function transformKartu(Asesi $asesi): array
     {
         // 1. Statistik pendaftaran: total / A (disetujui) / R (ditolak) / P (menunggu)
-        $pendaftaran = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)->get();
+        $pendaftaran = AsesiAsesmen::where(function ($q) use ($asesi) {
+            $q->where('id_asesi', $asesi->no_pendaftaran);
+            if (!empty($asesi->no_ktp)) {
+                $q->orWhere('id_asesi', $asesi->no_ktp);
+            }
+            if (!empty($asesi->id)) {
+                $q->orWhere('id_asesi', (string) $asesi->id);
+            }
+            $cleanNo = str_replace(['REG-', '-'], '', $asesi->no_pendaftaran ?? '');
+            if (!empty($cleanNo)) {
+                $q->orWhere('id_asesi', $cleanNo);
+            }
+        })->get();
 
         $statistik = [
             'total' => $pendaftaran->count(),

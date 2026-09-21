@@ -189,10 +189,10 @@ class FrontpageController extends Controller
                 'tanggal_terbit' => $request->filled('tanggal_terbit') ? $request->tanggal_terbit : null,
                 'waktu_terbit' => $request->filled('waktu_terbit') ? $request->waktu_terbit : null,
             ]);
-            $konten->save();
-
-            // Upload foto (jika ada)
+            // Upload foto (jika ada) — SEBELUM save agar nama file ikut
+            // tersimpan di kolom konten_foto pada INSERT yang sama
             $this->handleUpload($request, $konten, isCreate: true);
+            $konten->save();
 
             DB::commit();
 

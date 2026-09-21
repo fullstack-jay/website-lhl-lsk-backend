@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Respon Pengaduan Anda - {{ $noPengaduan }}</title>
+    <title>Konfirmasi Pengaduan Anda - {{ $noPengaduan }}</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
@@ -23,7 +23,7 @@
             border: 1px solid #e2e8f0;
         }
         .header {
-            background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+            background: linear-gradient(135deg, #e11d48 0%, #be185d 100%);
             color: white;
             padding: 32px 28px;
             text-align: center;
@@ -64,7 +64,7 @@
         .info-box {
             background-color: #f8fafc;
             border: 1px solid #e2e8f0;
-            border-left: 4px solid #059669;
+            border-left: 4px solid #e11d48;
             padding: 16px 18px;
             margin: 20px 0;
             border-radius: 8px;
@@ -86,45 +86,47 @@
             color: #1e293b;
             font-weight: 500;
         }
-        .respon-box {
-            background-color: #ecfdf5;
-            border: 1px solid #a7f3d0;
+        .aduan-box {
+            background-color: #fff1f2;
+            border: 1px solid #ffe4e6;
             padding: 18px;
             border-radius: 10px;
             margin: 20px 0;
         }
-        .respon-box h3 {
+        .aduan-box h3 {
             margin: 0 0 10px 0;
-            color: #065f46;
+            color: #9f1239;
             font-size: 15px;
             font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
-        .respon-box p {
+        .aduan-box p {
             margin: 0;
-            color: #064e3b;
+            color: #4c0519;
             line-height: 1.6;
             font-size: 14px;
             white-space: pre-wrap;
         }
-        .aduan-box {
-            background-color: #f8fafc;
-            border: 1px dashed #cbd5e1;
-            padding: 16px;
-            border-radius: 8px;
+        .notice-box {
+            background-color: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            padding: 16px 18px;
+            border-radius: 10px;
             margin: 20px 0;
         }
-        .aduan-box h4 {
+        .notice-box h4 {
             margin: 0 0 8px 0;
-            color: #475569;
-            font-size: 13px;
-            font-weight: 600;
+            color: #166534;
+            font-size: 14px;
+            font-weight: 700;
         }
-        .aduan-box p {
+        .notice-box p {
             margin: 0;
-            color: #64748b;
-            line-height: 1.5;
+            color: #14532d;
             font-size: 13px;
-            white-space: pre-wrap;
+            line-height: 1.5;
         }
         .status-badge {
             display: inline-block;
@@ -133,11 +135,9 @@
             font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
+            background-color: #fef3c7;
+            color: #92400e;
         }
-        .status-waiting { background-color: #fef3c7; color: #92400e; }
-        .status-processing { background-color: #dbeafe; color: #1e40af; }
-        .status-completed { background-color: #d1fae5; color: #065f46; }
-        .status-archived { background-color: #e2e8f0; color: #475569; }
         .footer {
             background-color: #f8fafc;
             padding: 20px 28px;
@@ -154,7 +154,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💬 Tanggapan Pengaduan</h1>
+            <h1>📋 Bukti Pengaduan Layanan</h1>
             <p>Lembaga Sertifikasi Kompetensi Lingkungan Hidup Lestari</p>
             <div class="badge-ticket">{{ $noPengaduan }}</div>
         </div>
@@ -162,49 +162,43 @@
         <div class="content">
             <p class="greeting">Halo, {{ $pengaduan->nama }}</p>
             <p style="font-size: 14px; color: #475569; margin-top: 0;">
-                Admin Layanan Pengaduan LSK LHL telah meninjau pengaduan Anda dan memberikan tanggapan resmi berikut:
+                Terima kasih telah menyampaikan pengaduan Anda. Laporan Anda telah berhasil kami terima dan terdaftar dalam sistem pengaduan LSK LHL dengan rincian sebagai berikut:
             </p>
 
             <div class="info-box">
                 <div class="info-row">
                     <span class="info-label">Nomor Tiket:</span>
-                    <span class="info-val"><strong style="color: #059669; font-family: monospace;">{{ $noPengaduan }}</strong></span>
+                    <span class="info-val"><strong style="color: #e11d48; font-family: monospace;">{{ $noPengaduan }}</strong></span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Tanggal Masuk:</span>
                     <span class="info-val">{{ $tanggalAduan }}</span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Status Terkini:</span>
-                    <span class="info-val">
-                        <span class="status-badge status-{{ $pengaduan->status }}">
-                            @if($pengaduan->status === 'completed')
-                                Selesai
-                            @elseif($pengaduan->status === 'processing')
-                                Diproses
-                            @elseif($pengaduan->status === 'waiting')
-                                Menunggu
-                            @else
-                                {{ ucfirst($pengaduan->status) }}
-                            @endif
-                        </span>
-                    </span>
+                    <span class="info-label">Pelapor:</span>
+                    <span class="info-val">{{ $pengaduan->nama }} ({{ ucfirst($pengaduan->jenis_responden ?? 'Masyarakat') }})</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Status Awal:</span>
+                    <span class="info-val"><span class="status-badge">Menunggu</span></span>
                 </div>
             </div>
 
-            <div class="respon-box">
-                <h3>✉️ Tanggapan / Tindak Lanjut Admin:</h3>
-                <p>{{ $respon }}</p>
-            </div>
-
             <div class="aduan-box">
-                <h4>📝 Kutipan Aduan Anda:</h4>
+                <h3>📝 Isi Pengaduan Anda:</h3>
                 <p>{{ $pengaduan->aduan }}</p>
             </div>
 
-            <p style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 20px;">
-                Jika Anda memiliki pertanyaan lebih lanjut atau tanggapan tambahan, Anda dapat langsung membalas (reply) email ini dengan tetap mencantumkan nomor tiket pengaduan <strong>{{ $noPengaduan }}</strong>.
-            </p>
+            <div class="notice-box">
+                <h4>ℹ️ Informasi Tindak Lanjut:</h4>
+                <p>
+                    Pengaduan Anda sedang dalam antrean peninjauan oleh tim admin LSK LHL. 
+                    Setiap tanggapan, klarifikasi, atau penyelesaian yang diberikan oleh admin <strong>akan otomatis dikirimkan ke email ini sebagai balasan resmi</strong>.
+                </p>
+                <p style="margin-top: 8px;">
+                    Mohon simpan nomor tiket <strong>{{ $noPengaduan }}</strong> ini sebagai bukti tanda terima dan referensi pelacakan pengaduan Anda.
+                </p>
+            </div>
 
             <p style="font-size: 14px; color: #475569; margin-top: 24px;">
                 Hormat kami,<br>
@@ -214,7 +208,7 @@
         </div>
 
         <div class="footer">
-            <p>Email ini dikirimkan otomatis sebagai tindak lanjut atas pengaduan tiket Anda.</p>
+            <p>Email ini dikirim secara otomatis sebagai konfirmasi tanda terima pengaduan Anda.</p>
             <p>&copy; {{ date('Y') }} LSK Lingkungan Hidup Lestari. All rights reserved.</p>
         </div>
     </div>

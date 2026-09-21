@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateStatusPengaduanRequest;
 use App\Models\Pengaduan;
 use App\Models\RiwayatRespon;
 use App\Mail\PengaduanResponMail;
+use App\Mail\PengaduanTiketMail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -123,13 +124,33 @@ class PengaduanController extends Controller
                 'dibaca' => false,
             ]);
 
+            // Kirim bukti pengaduan & nomor tiket ke email pelapor jika email diisi
+            $emailSent = false;
+            $emailError = null;
+            if (!empty($pengaduan->email)) {
+                try {
+                    Mail::to($pengaduan->email)->send(new PengaduanTiketMail($pengaduan));
+                    $emailSent = true;
+                } catch (\Exception $e) {
+                    $emailError = $e->getMessage();
+                    \Illuminate\Support\Facades\Log::error('Gagal mengirim email tiket pengaduan ke ' . $pengaduan->email . ': ' . $e->getMessage());
+                }
+            }
+
+            $message = 'Pengaduan berhasil dikirim';
+            if ($emailSent) {
+                $message = 'Pengaduan berhasil dikirim dan bukti tiket telah dikirimkan ke email ' . $pengaduan->email;
+            }
+
             return response()->json([
                 'success' => true,
-                'message' => 'Pengaduan berhasil dikirim',
+                'message' => $message,
+                'email_sent' => $emailSent,
                 'data' => [
                     'id' => $pengaduan->id,
                     'no_pengaduan' => $pengaduan->no_pengaduan,
                     'nama' => $pengaduan->nama,
+                    'email' => $pengaduan->email,
                     'aduan' => $pengaduan->aduan,
                     'status' => $pengaduan->status,
                     'tanggal' => $pengaduan->tanggal,

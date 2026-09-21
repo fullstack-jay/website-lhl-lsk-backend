@@ -12,12 +12,10 @@ use Illuminate\Queue\SerializesModels;
 use App\Models\Pengaduan;
 
 /**
- * Email respon pengaduan — dikirim LANGSUNG (sync, bukan queue) agar admin
- * langsung tahu sukses/gagal saat tombol ditekan (realtime, bukan antrean).
- * Menggunakan threading headers (In-Reply-To dan References) serta Subject Re:
- * agar otomatis menjadi balasan (thread reply) di Gmail dan email client pelapor.
+ * Email bukti tanda terima pengaduan & nomor tiket — dikirim ke pelapor saat submit pengaduan.
+ * Menyematkan Message-ID deterministik agar respon admin di kemudian hari dapat menjadi thread reply di Gmail.
  */
-class PengaduanResponMail extends Mailable
+class PengaduanTiketMail extends Mailable
 {
     use Queueable, SerializesModels;
 
@@ -29,19 +27,11 @@ class PengaduanResponMail extends Mailable
     public $pengaduan;
 
     /**
-     * Isi respon admin
-     *
-     * @var string
-     */
-    public $respon;
-
-    /**
      * Create a new message instance.
      */
-    public function __construct(Pengaduan $pengaduan, string $respon)
+    public function __construct(Pengaduan $pengaduan)
     {
         $this->pengaduan = $pengaduan;
-        $this->respon = $respon;
     }
 
     /**
@@ -50,11 +40,12 @@ class PengaduanResponMail extends Mailable
     public function envelope(): Envelope
     {
         $noAduan = $this->pengaduan->no_pengaduan ?? ('ADU-' . $this->pengaduan->id);
+
         $fromAddress = config('mail.from.address', 'no-reply@lsk-lhl.com');
         $fromName = config('mail.from.name', 'LSK Lingkungan Hidup Lestari');
 
         return new Envelope(
-            subject: 'Re: Konfirmasi Pengaduan Anda - ' . $noAduan,
+            subject: 'Konfirmasi Pengaduan Anda - ' . $noAduan,
             replyTo: [
                 new Address($fromAddress, $fromName),
             ],
@@ -63,8 +54,7 @@ class PengaduanResponMail extends Mailable
 
     /**
      * Get the message headers.
-     * Mengatur In-Reply-To dan References agar Gmail mengelompokkan balasan ini
-     * ke dalam thread / percakapan email bukti aduan sebelumnya.
+     * Mengatur Message-ID unik berbasis nomor pengaduan
      */
     public function headers(): Headers
     {
@@ -73,10 +63,7 @@ class PengaduanResponMail extends Mailable
         $messageId = "adu-{$this->pengaduan->id}-{$cleanId}@lsk-lhl.com";
 
         return new Headers(
-            references: [$messageId],
-            text: [
-                'In-Reply-To' => "<{$messageId}>",
-            ],
+            messageId: $messageId,
         );
     }
 
@@ -91,10 +78,9 @@ class PengaduanResponMail extends Mailable
             ?? now()->format('d/m/Y H:i');
 
         return new Content(
-            view: 'emails.pengaduan-respon',
+            view: 'emails.pengaduan-tiket',
             with: [
                 'pengaduan' => $this->pengaduan,
-                'respon' => $this->respon,
                 'noPengaduan' => $noAduan,
                 'tanggalAduan' => $tanggalAduan,
             ]

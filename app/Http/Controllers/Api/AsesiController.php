@@ -1298,6 +1298,36 @@ class AsesiController extends Controller
 
         $asesi->save();
 
+        // ── Notifikasi revisi ke peserta saat dokumen DITOLAK ──
+        // (lonceng notifikasi portal peserta — idem pola verifikasi sertifikat)
+        if ($status === 'ditolak') {
+            $docNames = [
+                'ijazah' => 'Scan Ijazah (Minimal S1/D4)',
+                'sertifikat_amdal' => 'Sertifikat Pelatihan AMDAL',
+                'sertifikat' => 'Sertifikat Pelatihan AMDAL',
+                'bukti_keterlibatan' => 'Bukti Keterlibatan AMDAL',
+                'suket' => 'Bukti Keterlibatan AMDAL',
+                'dokumen_amdal' => 'Salinan Dokumen AMDAL',
+                'cv' => 'Curriculum Vitae (CV)',
+                'foto' => 'Pas Foto (3x4)',
+                'ktp' => 'Scan KTP',
+                'sertifikat_kompetensi_lain' => 'Sertifikat Pelatihan Relevan',
+                'transkrip' => 'Sertifikat Pelatihan Relevan',
+            ];
+            $namaDok = $docNames[$shortcode] ?? $shortcode;
+            if (Schema::hasTable('asesi_notifikasi')) {
+                DB::table('asesi_notifikasi')->insert([
+                    'id_asesi' => $asesi->no_pendaftaran,
+                    'tipe' => 'warning',
+                    'judul' => 'Dokumen Perlu Upload Ulang',
+                    'pesan' => "Dokumen \"{$namaDok}\" yang Anda unggah dinyatakan belum sesuai atau ditolak oleh Verifikator LSK. Silakan segera unggah kembali berkas perbaikan melalui menu Profil.",
+                    'kategori' => 'dokumen',
+                    'dibaca' => 0,
+                    'waktu' => now(),
+                ]);
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Status verifikasi dokumen berhasil diperbarui',

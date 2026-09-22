@@ -278,10 +278,17 @@ class PesertaSkemaController extends Controller
             }
         }
 
-        // ── Query Jadwal Uji Kompetensi yang Tersedia untuk Skema Ini ──
+        // ── Query Jadwal Uji Kompetensi yang Tersedia untuk Skema Ini (Tahun Saat Ini & Belum Lewat Tanggal Akhir) ──
+        $currentYear = (int) date('Y');
+        $today = date('Y-m-d');
         $activeJadwals = \App\Models\JadwalAsesmen::with('tuk')
             ->where('id_skemakkni', $id)
             ->where('status', '!=', 'Selesai')
+            ->where(function ($q) use ($currentYear) {
+                $q->where('tahun', $currentYear)
+                  ->orWhereYear('tgl_asesmen', $currentYear);
+            })
+            ->whereRaw('COALESCE(tgl_asesmen_akhir, tgl_asesmen) >= ?', [$today])
             ->orderBy('tgl_asesmen')
             ->get();
 

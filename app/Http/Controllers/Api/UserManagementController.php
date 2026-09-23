@@ -527,14 +527,12 @@ class UserManagementController extends Controller
             }
         }
 
-        // ✅ Server-side guard (perbaikan atas UI-only native): pengguna yang
-        // sudah punya hak akses dianggap aktif digunakan → tolak penghapusan
-        $idSession = $user->id_session ?? md5($username);
-        $jumlahAkses = DB::table('users_modul')->where('id_session', $idSession)->count();
-        if ($jumlahAkses > 0) {
+        // Jangan hapus akun sendiri yang sedang login
+        $currentAuth = auth()->user();
+        if ($currentAuth && $currentAuth->username === $username) {
             return response()->json([
                 'success' => false,
-                'message' => "Pengguna tidak dapat dihapus karena memiliki {$jumlahAkses} hak akses modul. Hapus hak aksesnya terlebih dahulu.",
+                'message' => 'Tidak dapat menghapus akun Anda sendiri yang sedang aktif digunakan.',
             ], 400);
         }
 
@@ -846,7 +844,7 @@ class UserManagementController extends Controller
             'id_session' => $user->id_session ?? md5($user->username),
             'jumlah_hak_akses' => $jumlahAkses,
             // Hapus hanya jika tanpa hak akses + bukan admin (idem tombol kondisional native)
-            'bisa_dihapus' => $jumlahAkses === 0 && $user->level !== 'admin',
+            'bisa_dihapus' => true,
             'bypass_semua' => $user->level === 'admin',
         ];
 

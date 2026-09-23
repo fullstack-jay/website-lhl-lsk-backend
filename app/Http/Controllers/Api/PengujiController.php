@@ -355,7 +355,7 @@ class PengujiController extends Controller
             'no_lisensi' => 'nullable|string|max:100',
             'tanggal_lisensi' => 'nullable|date',
             'masaberlaku_lisensi' => 'nullable|date',
-            'pendidikan_terakhir' => 'nullable|string|max:10',
+            'pendidikan_terakhir' => 'nullable|string|max:255',
             'bid_keahlian' => 'nullable|string|max:255',
             'alamat' => 'nullable|string',
             'kelurahan' => 'nullable|string|max:255',
@@ -765,14 +765,14 @@ class PengujiController extends Controller
             'no_hp' => 'nullable|string|max:30',
             'no_induk' => 'nullable|string|max:100',
             'no_ktp' => 'nullable|string|max:50',
-            'pendidikan_terakhir' => 'nullable|string|max:10',
+            'pendidikan_terakhir' => 'nullable|string|max:255',
             'tahun_lulus' => 'nullable|integer|min:1950|max:2100',
             'bid_keahlian' => 'nullable|string|max:255',
-            'pekerjaan' => 'nullable|string|max:3',
+            'pekerjaan' => 'nullable|string|max:255',
             'kebangsaan' => 'nullable|string|max:100',
             'alamat' => 'nullable|string',
-            'RT' => 'nullable|string|max:5',
-            'RW' => 'nullable|string|max:5',
+            'RT' => 'nullable|string|max:20',
+            'RW' => 'nullable|string|max:20',
             'kelurahan' => 'nullable|string|max:255',
             'kecamatan' => 'nullable|string|max:255',
             'kota' => 'nullable|string|max:255',
@@ -795,9 +795,10 @@ class PengujiController extends Controller
         ]);
 
         if ($validator->fails()) {
+            $firstError = collect($validator->errors()->all())->first();
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal',
+                'message' => $firstError ?: 'Validasi gagal',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -1041,9 +1042,10 @@ class PengujiController extends Controller
         ]);
 
         if ($validator->fails()) {
+            $firstError = collect($validator->errors()->all())->first();
             return response()->json([
                 'success' => false,
-                'message' => 'Validasi gagal',
+                'message' => $firstError ?: 'Validasi gagal',
                 'errors' => $validator->errors(),
             ], 422);
         }

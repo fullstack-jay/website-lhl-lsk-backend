@@ -198,6 +198,7 @@ class PengujiController extends Controller
             'email' => $asesor->email,
             'no_hp' => $asesor->no_hp,
             'foto_url' => $asesor->foto ? asset(self::UPLOAD_DIR . '/' . $asesor->foto) : null,
+            'foto' => $asesor->foto,
 
             'status_akun' => $asesor->aktif === 'Y' ? 'AKTIF' : 'NON AKTIF',
             'lisensi' => [

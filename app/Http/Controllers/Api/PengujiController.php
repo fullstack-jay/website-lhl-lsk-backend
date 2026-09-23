@@ -806,8 +806,8 @@ class PengujiController extends Controller
 
         DB::beginTransaction();
         try {
-            // Upload file: rename timestamp.md5.ext (idem sistem lama, plus MIME check via validator)
-            foreach ([['foto', 'foto'], ['foto_sertifikat', 'foto_sertifikat']] as [$field, $column]) {
+            // Upload / Hapus file: rename timestamp.md5.ext (idem sistem lama, plus MIME check via validator)
+            foreach ([['foto', 'foto', 'hapus_foto'], ['foto_sertifikat', 'foto_sertifikat', 'hapus_foto_sertifikat']] as [$field, $column, $deleteField]) {
                 if ($request->hasFile($field)) {
                     $file = $request->file($field);
                     $ext = strtolower($file->getClientOriginalExtension());
@@ -818,10 +818,15 @@ class PengujiController extends Controller
 
                     // Hapus file lama agar tidak menumpuk
                     $oldFile = public_path(self::UPLOAD_DIR . '/' . $asesor->{$column});
-                    if (!empty($asesor->{$column}) && file_exists($oldFile)) unlink($oldFile);
+                    if (!empty($asesor->{$column}) && file_exists($oldFile)) @unlink($oldFile);
 
                     $file->move($dest, $fileName);
                     $asesor->{$column} = $fileName;
+                } elseif ($request->boolean($deleteField) || $request->input($deleteField) == '1') {
+                    // User meminta menghapus dokumen/foto yang ada
+                    $oldFile = public_path(self::UPLOAD_DIR . '/' . $asesor->{$column});
+                    if (!empty($asesor->{$column}) && file_exists($oldFile)) @unlink($oldFile);
+                    $asesor->{$column} = null;
                 }
             }
 

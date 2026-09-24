@@ -7,6 +7,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Dashboard Admin — GET /api/v1/admin/dashboard (auth:sanctum, role admin)
@@ -66,11 +67,17 @@ class AdminDashboardController extends Controller
 
     private function statistics(): array
     {
+        // Jumlah peserta terverifikasi di tabel asesi (selaras halaman Data Peserta)
+        $totalAsesi = (int) DB::table('asesi')
+            ->where('verifikasi', 'V')
+            ->where('blokir', 'N')
+            ->count();
+
         return [
             'tuk'    => (int) DB::table('tuk')->count(),
             'skema'  => (int) DB::table('skema_kkni')->where('aktif', 'Y')->count(),
             'asesor' => (int) DB::table('asesor')->count(),
-            'asesi'  => (int) DB::table('asesi')->count(),
+            'asesi'  => $totalAsesi,
         ];
     }
 
@@ -80,8 +87,11 @@ class AdminDashboardController extends Controller
 
     private function angkatan(): array
     {
+        // Rekap tahun angkatan peserta terverifikasi
         $rows = DB::table('asesi')
             ->selectRaw('angkatan AS tahun, COUNT(*) AS jumlah')
+            ->where('verifikasi', 'V')
+            ->where('blokir', 'N')
             ->whereNotNull('angkatan')
             ->where('angkatan', '!=', '')
             ->where('angkatan', '!=', '0000')

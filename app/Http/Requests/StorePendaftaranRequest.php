@@ -42,9 +42,7 @@ class StorePendaftaranRequest extends FormRequest
                 'required',
                 'string',
                 'size:16',
-                'regex:/^[0-9]+$/',
-                \Illuminate\Validation\Rule::unique('pendaftarans', 'no_ktp')->whereNull('deleted_at'),
-                \Illuminate\Validation\Rule::unique('users', 'no_ktp'),
+                'regex:/^[0-9]+$/',   // NIK ganda diizinkan (tidak ada lagi unique)
             ],
             'kebangsaan' => 'required|string|max:100',
             'kualifikasi_pendidikan' => 'required|in:D4,S1,S2,S3',

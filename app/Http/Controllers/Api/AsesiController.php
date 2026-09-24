@@ -478,7 +478,7 @@ class AsesiController extends Controller
         // Validate request
         $validator = Validator::make($request->all(), [
             'nama' => 'required|string|max:100',
-            'no_ktp' => 'required|string|unique:asesi,no_ktp',
+            'no_ktp' => 'required|string',   // NIK ganda diizinkan (pemegang multi-sertifikat / dual-role)
             'tmp_lahir' => 'nullable|string',
             'tgl_lahir' => 'nullable|date',
             'jenis_kelamin' => 'required|in:L,P',
@@ -768,7 +768,7 @@ class AsesiController extends Controller
         // Validate request
         $validator = Validator::make($request->all(), [
             'nama' => 'required|string|max:100',
-            'no_ktp' => 'required|string|unique:asesi,no_ktp,' . $asesi->id,
+            'no_ktp' => 'required|string',   // NIK ganda diizinkan
             'tmp_lahir' => 'nullable|string',
             'tgl_lahir' => 'nullable|date',
             'jenis_kelamin' => 'required|in:L,P',

@@ -198,7 +198,15 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function isPeserta(): bool
     {
-        return in_array($this->level, ['user', 'peserta'], true);
+        if (in_array($this->level, ['user', 'peserta'], true)) {
+            return true;
+        }
+        // Penguji/Asesor yang memiliki sertifikat di tabel asesi juga sah sebagai peserta
+        if (in_array($this->level, ['penguji', 'asesor'], true) && !empty($this->no_ktp)) {
+            return \App\Models\Asesi::where('no_ktp', $this->no_ktp)->exists();
+        }
+
+        return false;
     }
 
     /**

@@ -16,6 +16,75 @@ class PesertaProfilController extends Controller
     /**
      * GET /api/v1/peserta/profil
      */
+    /**
+     * GET /api/v1/peserta/sertifikat
+     * Daftar seluruh sertifikat milik peserta ini (dari tabel relasi
+     * asesi_sertifikat — mendukung pemegang lebih dari satu sertifikat),
+     * digabung dengan no_sertifikat utama di tabel asesi (bila berbeda).
+     */
+    public function sertifikatSaya(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Sesi tidak valid.'], 401);
+        }
+
+        $asesi = Asesi::where('no_ktp', $user->no_ktp)
+            ->orWhere('no_pendaftaran', $user->username)
+            ->orWhere('no_pendaftaran', $user->no_induk)
+            ->orWhere('nohp', $user->no_telp)
+            ->first();
+
+        if (!$asesi) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+                'message' => 'Belum ada data sertifikat',
+            ]);
+        }
+
+        $items = collect();
+
+        // 1. Dari tabel relasi asesi_sertifikat (mendukung multi-sertifikat)
+        if (\Illuminate\Support\Facades\Schema::hasTable('asesi_sertifikat')) {
+            foreach (DB::table('asesi_sertifikat')
+                ->where('no_pendaftaran', $asesi->no_pendaftaran)
+                ->orderBy('tgl_sertifikat')
+                ->get() as $r) {
+                $items->push([
+                    'no_sertifikat' => $r->no_sertifikat,
+                    'jenis_sertifikat' => $r->jenis_sertifikat,
+                    'tgl_sertifikat' => $r->tgl_sertifikat,
+                    'tahun' => $r->tahun,
+                    'file_sertifikat' => $r->file_sertifikat,
+                    'file_url' => $r->file_sertifikat
+                        ? asset('storage/foto_asesi/' . $r->file_sertifikat) : null,
+                    'sumber' => 'relasi',
+                ]);
+            }
+        }
+
+        // 2. Fallback: sertifikat utama di tabel asesi (bila belum tercatat di relasi)
+        if (!empty($asesi->no_sertifikat) && !$items->contains('no_sertifikat', $asesi->no_sertifikat)) {
+            $items->push([
+                'no_sertifikat' => $asesi->no_sertifikat,
+                'jenis_sertifikat' => $asesi->jenis_sertifikat,
+                'tgl_sertifikat' => $asesi->tgl_sertifikat,
+                'tahun' => $asesi->tgl_sertifikat ? (int) date('Y', strtotime($asesi->tgl_sertifikat)) : null,
+                'file_sertifikat' => $asesi->file_sertifikat_aktif,
+                'file_url' => $asesi->file_sertifikat_aktif
+                    ? asset('storage/foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
+                'sumber' => 'asesi',
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'jumlah' => $items->count(),
+            'data' => $items->values(),
+        ]);
+    }
+
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();

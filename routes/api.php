@@ -322,6 +322,7 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/skema', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'index']);
     Route::get('/skema/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'show']);
     Route::post('/skema/{id}/dokumen', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'storeDokumen']);
+    Route::get('/sertifikat', [\App\Http\Controllers\Api\PesertaProfilController::class, 'sertifikatSaya']);
     Route::get('/dokumen-library', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'library']);
     Route::post('/skema/{id}/dokumen-library', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'storeFromLibrary']);
     Route::delete('/dokumen/{id}', [\App\Http\Controllers\Api\PesertaSkemaController::class, 'destroyDokumen']);

@@ -67,6 +67,9 @@ class ImportPesertaSertifikatCommand extends Command
             ->mapWithKeys(fn ($id, $name) => [mb_strtoupper(trim($name)) => $id])
             ->all();
 
+        $certBatch = [];
+        $certTableExists = Schema::hasTable('asesi_sertifikat');
+
         // ── NIK yang sudah ada di DB (untuk dedup) ──
         $existingNiks = Schema::hasColumn('asesi', 'no_ktp')
             ? DB::table('asesi')->whereNotNull('no_ktp')->where('no_ktp', '!=', '')->pluck('no_ktp')->flip()
@@ -136,6 +139,23 @@ class ImportPesertaSertifikatCommand extends Command
                     }
                     continue;
                 }
+
+                // ── Tabel relasi asesi_sertifikat: SEMUA baris sertifikat masuk ──
+                // (termasuk orang dengan 2 sertifikat — dedup asesi tidak menghalangi)
+                $tglRaw = $get('tgl');
+                $tgl = $tglRaw !== '' && strtotime($tglRaw) ? date('Y-m-d', strtotime($tglRaw)) : null;
+                $skemaRaw = strtoupper($this->normalizeCert($get('skema')));
+                $skemaRaw = str_replace(' ', '', $skemaRaw);
+                if (!$dry && Schema::hasTable('asesi_sertifikat')) {
+                    $certBatch[] = [
+                        'no_pendaftaran' => 'IMP-' . $nik,
+                        'no_sertifikat' => $nomor,
+                        'jenis_sertifikat' => in_array($skemaRaw, ['ATPA', 'KTPA'], true) ? $skemaRaw : ($skemaRaw ?: null),
+                        'tgl_sertifikat' => $tgl,
+                        'tahun' => $tgl ? (int) date('Y', strtotime($tgl)) : null,
+                    ];
+                }
+
                 if (isset($seenNik[$nik])) {
                     $dupFile++;
                     continue;
@@ -145,10 +165,6 @@ class ImportPesertaSertifikatCommand extends Command
                     continue;
                 }
                 $seenNik[$nik] = true;
-
-                // Tanggal terbit
-                $tgl = $get('tgl');
-                $tgl = $tgl !== '' && strtotime($tgl) ? date('Y-m-d', strtotime($tgl)) : null;
 
                 // Provinsi → id wilayah
                 $provRaw = mb_strtoupper($get('prov'));
@@ -166,9 +182,7 @@ class ImportPesertaSertifikatCommand extends Command
                     $unmatchedProv[] = $provRaw;
                 }
 
-                // Skema (ATPA/KTPA) — normalisasi homoglif juga
-                $skema = strtoupper($this->normalizeCert($get('skema')));
-                $skema = str_replace(' ', '', $skema);
+                $skema = $skemaRaw;
 
                 $payload = [
                     'no_pendaftaran' => 'IMP-' . $nik,
@@ -224,6 +238,15 @@ class ImportPesertaSertifikatCommand extends Command
             $inserted += count($batch);
         }
 
+        // Flush tabel relasi sertifikat (insertOrIgnore — aman dijalankan ulang)
+        $certCount = 0;
+        if (!$dry && $certTableExists && !empty($certBatch)) {
+            foreach (array_chunk($certBatch, 500) as $chunk) {
+                $certCount += DB::table('asesi_sertifikat')->insertOrIgnore($chunk);
+            }
+            $this->info("Tabel asesi_sertifikat terisi: $certCount baris baru");
+        }
+
         // ── Laporan ──
         $this->line('════════════════════════════════════════');
         $this->info(($dry ? '[DRY-RUN] ' : '') . "Impor selesai");
@@ -246,6 +269,8 @@ class ImportPesertaSertifikatCommand extends Command
                     . ' | ' . ($s['tgl_sertifikat'] ?? '-') . ' | propinsi=' . ($s['propinsi'] ?? 'NULL'));
             }
         }
+        $this->line('── Sertifikat utk tabel relasi ──');
+        $this->info(($dry ? '[DRY-RUN] ' : '') . 'Baris sertifikat terkumpul: ' . count($certBatch) . ' (unik by nomor)');
         $this->line('════════════════════════════════════════');
 
         return self::SUCCESS;

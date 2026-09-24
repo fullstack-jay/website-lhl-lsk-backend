@@ -67,11 +67,8 @@ class AdminDashboardController extends Controller
 
     private function statistics(): array
     {
-        // Jumlah peserta terverifikasi di tabel asesi (selaras halaman Data Peserta)
-        $totalAsesi = (int) DB::table('asesi')
-            ->where('verifikasi', 'V')
-            ->where('blokir', 'N')
-            ->count();
+        // Total seluruh peserta terdaftar (termasuk pendaftar baru yang belum terverifikasi)
+        $totalAsesi = (int) DB::table('asesi')->count();
 
         return [
             'tuk'    => (int) DB::table('tuk')->count(),
@@ -87,11 +84,9 @@ class AdminDashboardController extends Controller
 
     private function angkatan(): array
     {
-        // Rekap tahun angkatan peserta terverifikasi
+        // Rekap tahun angkatan SELURUH peserta (termasuk yang belum terverifikasi)
         $rows = DB::table('asesi')
             ->selectRaw('angkatan AS tahun, COUNT(*) AS jumlah')
-            ->where('verifikasi', 'V')
-            ->where('blokir', 'N')
             ->whereNotNull('angkatan')
             ->where('angkatan', '!=', '')
             ->where('angkatan', '!=', '0000')

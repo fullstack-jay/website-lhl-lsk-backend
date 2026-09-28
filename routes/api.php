@@ -38,7 +38,7 @@ Route::prefix('pendaftaran')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\PendaftaranController::class, 'index']);
         Route::get('/statistics', [\App\Http\Controllers\Api\PendaftaranController::class, 'statistics']);
-        Route::put('/{id}/status', [\App\Http\Controllers\Api\PendaftaranController::class, 'updateStatus']);
+        Route::put('/{id}/status', [\App\Http\Controllers\Api\PendaftaranController::class, 'updateStatus'])->middleware('approval.admin');
         Route::delete('/{id}', [\App\Http\Controllers\Api\PendaftaranController::class, 'destroy']);
     });
 });
@@ -613,10 +613,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::put('/{noPendaftaran}', [\App\Http\Controllers\Api\AsesiController::class, 'update']);
         Route::delete('/{noPendaftaran}', [\App\Http\Controllers\Api\AsesiController::class, 'destroy']);
         Route::put('/{id}/blokir', [\App\Http\Controllers\Api\AsesiController::class, 'updateBlokir']);
-        Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi']);
-        Route::put('/{noPendaftaran}/verifikasi-dokumen', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasiDokumen']);
-        Route::put('/{noPendaftaran}/validasi-pembayaran', [\App\Http\Controllers\Api\AsesiController::class, 'updateValidasiPembayaran']);
-        Route::put('/{noPendaftaran}/kwitansi-signature', [\App\Http\Controllers\Api\AsesiController::class, 'updateKwitansiSignature']);
+        Route::put('/{noPendaftaran}/verifikasi', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasi'])->middleware('approval.admin');
+        Route::put('/{noPendaftaran}/verifikasi-dokumen', [\App\Http\Controllers\Api\AsesiController::class, 'updateVerifikasiDokumen'])->middleware('approval.admin');
+        Route::put('/{noPendaftaran}/validasi-pembayaran', [\App\Http\Controllers\Api\AsesiController::class, 'updateValidasiPembayaran'])->middleware('approval.admin');
+        Route::put('/{noPendaftaran}/kwitansi-signature', [\App\Http\Controllers\Api\AsesiController::class, 'updateKwitansiSignature'])->middleware('approval.admin');
     });
 
     // Verifikasi Sertifikat Peserta (ATPA / KTPA)
@@ -626,13 +626,13 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
         Route::post('/master-ttd', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'updateMasterTtd']);
         Route::get('/', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'index']);
         Route::get('/{noPendaftaran}', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'show']);
-        Route::post('/pemeliharaan/{id}/verifikasi', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPemeliharaan']);
-        Route::post('/pemeliharaan/{id}/verifikasi-pkb', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPkb']);
+        Route::post('/pemeliharaan/{id}/verifikasi', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPemeliharaan'])->middleware('approval.admin');
+        Route::post('/pemeliharaan/{id}/verifikasi-pkb', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'verifikasiPkb'])->middleware('approval.admin');
     });
 
     Route::prefix('peserta-verifikasi-sertifikat')->group(function () {
         Route::get('/', [\App\Http\Controllers\Api\PesertaVerifikasiSertifikatController::class, 'index']);
-        Route::post('/{id}/verifikasi', [\App\Http\Controllers\Api\PesertaVerifikasiSertifikatController::class, 'verifikasi']);
+        Route::post('/{id}/verifikasi', [\App\Http\Controllers\Api\PesertaVerifikasiSertifikatController::class, 'verifikasi'])->middleware('approval.admin');
     });
 
     // Calon Peserta Baru (asesibaru) routes — sesuai docs/BACKEND_CALONPESERTABARU.md

@@ -32,8 +32,8 @@ class KomiteController extends Controller
     /** Direktori upload dokumen komite (beda dgn asesor!). */
     private const UPLOAD_DIR = 'foto_komite';
 
-    /** Password default personil komite baru — sama persis dengan Penguji (Kbl12345). */
-    public const DEFAULT_PASSWORD = 'Kbl12345';
+    /** Password default personil komite baru — sama persis dengan Penguji (Lsk12345). */
+    public const DEFAULT_PASSWORD = 'Lsk12345';
 
     // ════════════════════════════════════════════════════════════════
     // DAFTAR KOMITE — 5 TAB (idem Penguji)
@@ -498,7 +498,7 @@ class KomiteController extends Controller
                 // Informasi akun login untuk dialog frontend saat tombol
                 // "Tambah Anggota" ditekan (idem response create Penguji)
                 'akun_login' => [
-                    'password_default' => self::DEFAULT_PASSWORD,   // Kbl12345
+                    'password_default' => self::DEFAULT_PASSWORD,   // Lsk12345
                     // identifier yang bisa dipakai personil untuk login
                     'no_ktp' => $user->no_ktp,
                     'no_hp' => $user->no_telp,
@@ -534,7 +534,7 @@ class KomiteController extends Controller
             ], 404);
         }
 
-        // Reset password otomatis ke default Kbl12345
+        // Reset password otomatis ke default Lsk12345
         $plainPassword = self::DEFAULT_PASSWORD;
 
         DB::beginTransaction();

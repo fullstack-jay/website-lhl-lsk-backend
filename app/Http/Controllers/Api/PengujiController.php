@@ -324,13 +324,13 @@ class PengujiController extends Controller
     // ════════════════════════════════════════════════════════════════
 
     /** Password default penguji baru (sesuai docs/BACKEND_PENGUJI.md TL;DR #2). */
-    public const DEFAULT_PASSWORD = 'Kbl12345';
+    public const DEFAULT_PASSWORD = 'Lsk12345';
 
     /**
      * POST /api/v1/admin/penguji
      *
      * "Tambah Penguji Baru" — frontend TIDAK mengirim password.
-     * Backend otomatis men-set password default `Kbl12345` (bcrypt).
+     * Backend otomatis men-set password default `Lsk12345` (bcrypt).
      * (Pada sistem native, password yang sama dikirim ke penguji via email+SMS.)
      *
      * Akun dibuat di 2 tempat agar konsisten dengan arsitektur login:
@@ -413,7 +413,7 @@ class PengujiController extends Controller
             // 1. Insert ke tabel asesor (profil master)
             $asesor = new Asesor(array_merge($profileData, [
                 'no_ktp' => $request->no_ktp,
-                'password' => Hash::make(self::DEFAULT_PASSWORD),  // auto Kbl12345 (bcrypt)
+                'password' => Hash::make(self::DEFAULT_PASSWORD),  // auto Lsk12345 (bcrypt)
                 'aktif' => 'Y',
             ]));
             if ($asesor->tgl_lahir) {
@@ -627,7 +627,7 @@ class PengujiController extends Controller
             ], 404);
         }
 
-        // Reset password otomatis ke default Kbl12345
+        // Reset password otomatis ke default Lsk12345
         $plainPassword = self::DEFAULT_PASSWORD;
 
         DB::beginTransaction();

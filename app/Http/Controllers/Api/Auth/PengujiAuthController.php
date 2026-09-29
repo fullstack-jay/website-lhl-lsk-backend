@@ -66,7 +66,7 @@ class PengujiAuthController extends ApiController
                 $user = User::updateOrCreate(
                     ['username' => $username],
                     [
-                        'password' => $asesor->password ?: Hash::make('Kbl12345'),
+                        'password' => $asesor->password ?: Hash::make('Lsk12345'),
                         'nama_lengkap' => $asesor->nama,
                         'gelar_depan' => $asesor->gelar_depan,
                         'gelar_blk' => $asesor->gelar_blk,

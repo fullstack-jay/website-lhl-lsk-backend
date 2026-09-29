@@ -65,7 +65,7 @@ class KomiteTeknisAuthController extends ApiController
                 $user = User::updateOrCreate(
                     ['username' => $username],
                     [
-                        'password' => $komite->password ?: Hash::make('Kbl12345'),
+                        'password' => $komite->password ?: Hash::make('Lsk12345'),
                         'nama_lengkap' => $komite->nama,
                         'gelar_depan' => $komite->gelar_depan,
                         'gelar_blk' => $komite->gelar_blk,

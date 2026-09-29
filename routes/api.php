@@ -297,6 +297,7 @@ Route::middleware(['auth:sanctum'])->prefix('peserta')->group(function () {
     Route::get('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'show']);
     Route::post('/profil', [\App\Http\Controllers\Api\PesertaProfilController::class, 'update']);
     Route::post('/sertifikat-atpa-ktpa', [\App\Http\Controllers\Api\PesertaProfilController::class, 'uploadSertifikatAtpaKtpa']);
+    Route::post('/dokumen-persyaratan', [\App\Http\Controllers\Api\PesertaProfilController::class, 'uploadDokumenPersyaratan']);
 
     // Konfirmasi Pembayaran (konfpay) — docs/BACKEND_KONFIRMASI_PEMBAYARAN.md
     Route::get('/konfirmasi-pembayaran', [\App\Http\Controllers\Api\KonfirmasiPembayaranController::class, 'index']);

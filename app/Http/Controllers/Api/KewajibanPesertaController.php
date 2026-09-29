@@ -80,49 +80,124 @@ class KewajibanPesertaController extends Controller
         $sertifikatNo = $sertifikatAsesmen?->no_serisertifikat
             ?: ($asesi->no_sertifikat ?: ('SERT/' . $currentYear . '/' . ($asesi->jenis_sertifikat ?: 'ATPA') . '/' . substr($asesi->no_pendaftaran, -4)));
 
-        // Auto-create pemeliharaan tahun berjalan + evaluasi berikutnya (lazy §7)
-        $this->ensureRecords($asesi->no_pendaftaran, $sertifikatNo, $sertifikatAsesmen, $asesi);
+        $tglTerbit = $this->resolveTanggalSertifikat($asesi, $sertifikatAsesmen);
+        $carbonTerbit = \Carbon\Carbon::parse($tglTerbit)->startOfDay();
+        $today = now()->startOfDay();
 
-        // ── Pemeliharaan + derive status ──
-        $pemeliharaan = DB::table('asesi_pemeliharaan')
+        // Auto-create pemeliharaan 5 tahun + evaluasi berikutnya (lazy §7)
+        $this->ensureRecords($asesi->no_pendaftaran, $sertifikatNo, $sertifikatAsesmen, $asesi, $tglTerbit);
+
+        // ── Pemeliharaan + derive status berdasarkan periode kronologis ──
+        $pemeliharaanRecords = DB::table('asesi_pemeliharaan')
             ->where('id_asesi', $asesi->no_pendaftaran)
-            ->orderBy('tahun', 'desc')
-            ->get()
-            ->map(function ($p) {
-                $derived = $this->deriveStatus($p->status, $p->tahun, false, !empty($p->tanggal_upload));
-                // Sinkronkan derived ke DB bila berubah
-                if ($derived['status'] !== $p->status) {
-                    DB::table('asesi_pemeliharaan')->where('id', $p->id)
-                        ->update(['status' => $derived['status']]);
-                    $p->status = $derived['status'];
-                }
-                return [
-                    'id' => $p->id,
-                    'tahun' => (int) $p->tahun,
-                    'sertifikat_no' => $p->sertifikat_no,
-                    'status' => $p->status,
-                    'status_label' => $this->statusLabel($p->status),
-                    'tanggal_upload' => $this->fmtDateTime($p->tanggal_upload),
-                    'tanggal_jatuh_tempo' => "{$p->tahun}-12-31",
-                    'tanggal_evaluasi' => $this->fmtDateTime($p->tanggal_evaluasi),
-                    'catatan_evaluator' => $p->catatan_evaluator,
-                    'dokumen' => [
-                        'penunjukan' => $p->file_penunjukan ? asset(self::dir() . '/' . $p->file_penunjukan) : null,
-                        'logbook' => $p->file_logbook ? asset(self::dir() . '/' . $p->file_logbook) : null,
-                        'cover_tim' => $p->file_cover_tim ? asset(self::dir() . '/' . $p->file_cover_tim) : null,
-                        'ka_andal' => $p->file_ka_andal ? asset(self::dir() . '/' . $p->file_ka_andal) : null,
-                    ],
-                    'bisa_upload' => $derived['bisa_upload'],
-                ];
-            })->all();
+            ->orderBy('tahun', 'asc')
+            ->get();
 
-        // ── Evaluasi + derive status ──
+        $processedPemeliharaan = [];
+        $approvedYearsMap = [];
+
+        foreach ($pemeliharaanRecords as $p) {
+            $tahunInt = (int) $p->tahun;
+            $periode = $this->calculatePeriodePemeliharaan($tglTerbit, $tahunInt);
+            $mulaiCarbon = \Carbon\Carbon::parse($periode['tanggal_mulai'])->startOfDay();
+            $tempoCarbon = \Carbon\Carbon::parse($periode['tanggal_jatuh_tempo'])->startOfDay();
+
+            $isApproved = ($p->status === 'DISETUJUI' || $p->status_pkb === 'DISETUJUI' || (!empty($p->ttd_rusdani) && !empty($p->ttd_nina)));
+            $adaFile = !empty($p->tanggal_upload) || !empty($p->file_penunjukan) || !empty($p->file_logbook);
+
+            $derivedStatus = $p->status;
+            $bisaUpload = true;
+            $pesanKunci = null;
+            $keteranganPemenuhan = null;
+
+            if ($isApproved) {
+                $derivedStatus = 'DISETUJUI';
+                $bisaUpload = false;
+                $keteranganPemenuhan = "Pemeliharaan masih memenuhi untuk {$periode['tahun_ke_label']}";
+                $approvedYearsMap[$tahunInt] = true;
+
+                if ($p->status !== 'DISETUJUI') {
+                    DB::table('asesi_pemeliharaan')->where('id', $p->id)->update(['status' => 'DISETUJUI']);
+                    $p->status = 'DISETUJUI';
+                }
+            } else {
+                $approvedYearsMap[$tahunInt] = false;
+
+                if ($periode['tahun_ke'] > 1) {
+                    $prevTahun = $tahunInt - 1;
+                    $isPrevApproved = !empty($approvedYearsMap[$prevTahun]);
+                    $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+
+                    if ($isPrevApproved) {
+                        // Tahun sebelumnya sudah di-ACC: tahun ini terbuka untuk pengajuan pemeliharaan
+                        $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, null);
+                        $derivedStatus = $derived['status'];
+                        $bisaUpload = $derived['bisa_upload'];
+                        $pesanKunci = null;
+                    } else {
+                        // Tahun sebelumnya belum di-ACC
+                        $derivedStatus = 'BELUM_WAKTUNYA';
+                        $bisaUpload = false;
+                        $pesanKunci = "Harap selesaikan kewajiban pemeliharaan {$prevLabel} terlebih dahulu.";
+                    }
+                } else {
+                    // Tahun Pertama
+                    $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, $mulaiCarbon);
+                    $derivedStatus = $derived['status'];
+                    $bisaUpload = $derived['bisa_upload'];
+                }
+
+                if ($derivedStatus !== $p->status && in_array($derivedStatus, ['DISETUJUI', 'SUDAH_UPLOAD', 'BELUM_WAKTUNYA', 'AKAN_JATUH_TEMPO', 'TERLAMBAT', 'BELUM'])) {
+                    DB::table('asesi_pemeliharaan')->where('id', $p->id)->update(['status' => $derivedStatus]);
+                    $p->status = $derivedStatus;
+                }
+            }
+
+            $processedPemeliharaan[] = [
+                'id' => $p->id,
+                'tahun' => $tahunInt,
+                'tahun_ke' => $periode['tahun_ke'],
+                'tahun_ke_label' => $periode['tahun_ke_label'],
+                'sertifikat_no' => $p->sertifikat_no,
+                'status' => $derivedStatus,
+                'status_label' => $this->statusLabel($derivedStatus),
+                'status_pkb' => $p->status_pkb ?: ($isApproved ? 'DISETUJUI' : 'BELUM'),
+                'catatan_pkb' => $p->catatan_pkb,
+                'ttd_rusdani' => $p->ttd_rusdani,
+                'tgl_ttd_rusdani' => $p->tgl_ttd_rusdani,
+                'ttd_nina' => $p->ttd_nina,
+                'tgl_ttd_nina' => $p->tgl_ttd_nina,
+                'tanggal_mulai' => $periode['tanggal_mulai'],
+                'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
+                'tanggal_upload' => $this->fmtDateTime($p->tanggal_upload),
+                'tanggal_evaluasi' => $this->fmtDateTime($p->tanggal_evaluasi),
+                'catatan_evaluator' => $p->catatan_evaluator,
+                'keterangan_pemenuhan' => $keteranganPemenuhan,
+                'pesan_kunci' => $pesanKunci,
+                'dokumen' => [
+                    'penunjukan' => $p->file_penunjukan ? asset(self::dir() . '/' . $p->file_penunjukan) : null,
+                    'logbook' => $p->file_logbook ? asset(self::dir() . '/' . $p->file_logbook) : null,
+                    'cover_tim' => $p->file_cover_tim ? asset(self::dir() . '/' . $p->file_cover_tim) : null,
+                    'ka_andal' => $p->file_ka_andal ? asset(self::dir() . '/' . $p->file_ka_andal) : null,
+                    'link_dokumen_lengkap' => $p->link_dokumen_lengkap ?? null,
+                ],
+                'link_dokumen_lengkap' => $p->link_dokumen_lengkap ?? null,
+                'bisa_upload' => $bisaUpload,
+            ];
+        }
+
+        // Tampilkan pemeliharaan terurut tahun asc (atau desc)
+        $pemeliharaan = collect($processedPemeliharaan)->sortBy('tahun')->values()->all();
+
+        // ── Evaluasi + derive status (Jatuh tempo 3 tahun dari terbit) ──
+        $tglEvaluasiTempo = $carbonTerbit->copy()->addYears(3)->toDateString();
         $evaluasi = DB::table('asesi_evaluasi')
             ->where('id_asesi', $asesi->no_pendaftaran)
             ->orderBy('tahun_ke', 'asc')
             ->get()
-            ->map(function ($e) {
-                $derived = $this->deriveStatus($e->status, (int) $e->tahun_jatuh_tempo, true, !empty($e->file_dokumen));
+            ->map(function ($e) use ($carbonTerbit, $today, $tglEvaluasiTempo) {
+                $evalTempoCarbon = \Carbon\Carbon::parse($tglEvaluasiTempo)->startOfDay();
+                $derived = $this->deriveStatusWithDates($e->status, $evalTempoCarbon, true, !empty($e->file_dokumen));
                 if ($derived['status'] !== $e->status) {
                     DB::table('asesi_evaluasi')->where('id', $e->id)
                         ->update(['status' => $derived['status']]);
@@ -134,7 +209,7 @@ class KewajibanPesertaController extends Controller
                     'sertifikat_no' => $e->sertifikat_no,
                     'status' => $e->status,
                     'status_label' => $this->statusLabel($e->status),
-                    'tanggal_jatuh_tempo' => "{$e->tahun_jatuh_tempo}-12-31",
+                    'tanggal_jatuh_tempo' => $tglEvaluasiTempo,
                     'tanggal_upload' => $this->fmtDateTime($e->tanggal_upload),
                     'jenis_dokumen' => $e->jenis_dokumen,
                     'dokumen_url' => $e->file_dokumen ? asset(self::dir() . '/' . $e->file_dokumen) : null,
@@ -144,31 +219,26 @@ class KewajibanPesertaController extends Controller
             })->all();
 
         // ── Summary cards (derivasi §5) ──
-        $summary = [
-            'pemeliharaan_aktif_tahun' => DB::table('asesi_pemeliharaan')
-                ->where('id_asesi', $asesi->no_pendaftaran)
-                ->where('status', 'DISETUJUI')
-                ->orderBy('tahun', 'desc')->value('tahun'),
-            'status_pemeliharaan' => null,
-            'status_pemeliharaan_label' => null,
-            'jatuh_tempo_berikutnya' => null,
-            'evaluasi_berikutnya_tahun' => DB::table('asesi_evaluasi')
-                ->where('id_asesi', $asesi->no_pendaftaran)
-                ->where('status', '!=', 'DISETUJUI')
-                ->orderBy('tahun_jatuh_tempo')->value('tahun_jatuh_tempo'),
-        ];
+        // Periode berjalan saat ini (rentang tanggal_mulai <= hari ini <= tanggal_jatuh_tempo)
+        $currentPem = collect($processedPemeliharaan)->first(function ($item) use ($today) {
+            $mulai = \Carbon\Carbon::parse($item['tanggal_mulai'])->startOfDay();
+            $tempo = \Carbon\Carbon::parse($item['tanggal_jatuh_tempo'])->startOfDay();
+            return $item['status'] !== 'DISETUJUI' && $today->gte($mulai) && $today->lte($tempo);
+        }) ?? collect($processedPemeliharaan)->first(fn ($item) => $item['status'] !== 'DISETUJUI')
+           ?? collect($processedPemeliharaan)->first();
 
-        $tahunIni = (int) now()->year;
-        $current = collect($pemeliharaan)->firstWhere('tahun', $tahunIni)
-            ?? collect($pemeliharaan)->first();   // fallback: record terakhir
-        if ($current) {
-            $summary['status_pemeliharaan'] = $current['status'];
-            $summary['status_pemeliharaan_label'] = $current['status_label'];
-        }
-        $summary['jatuh_tempo_berikutnya'] = collect($pemeliharaan)
-            ->where('status', '!=', 'DISETUJUI')
-            ->sortBy('tanggal_jatuh_tempo')
-            ->first()['tanggal_jatuh_tempo'] ?? null;
+        $jatuhTempoBerikutnya = $currentPem['tanggal_jatuh_tempo'] ?? $carbonTerbit->copy()->addYears(1)->toDateString();
+
+        $summary = [
+            'pemeliharaan_aktif_tahun' => $currentPem['tahun'] ?? $carbonTerbit->year,
+            'tahun_ke_label' => $currentPem['tahun_ke_label'] ?? 'Tahun Pertama',
+            'status_pemeliharaan' => $currentPem['status'] ?? 'BELUM',
+            'status_pemeliharaan_label' => $currentPem['status_label'] ?? 'Belum Upload',
+            'keterangan_pemenuhan' => $currentPem['keterangan_pemenuhan'] ?? ($currentPem['status'] === 'DISETUJUI' ? "Pemeliharaan masih memenuhi untuk {$currentPem['tahun_ke_label']}" : null),
+            'jatuh_tempo_berikutnya' => $jatuhTempoBerikutnya,
+            'evaluasi_berikutnya_tahun' => $carbonTerbit->copy()->addYears(3)->year,
+            'tanggal_jatuh_tempo_evaluasi' => $tglEvaluasiTempo,
+        ];
 
         // ── Notifikasi ──
         $notifRows = DB::table('asesi_notifikasi')
@@ -210,6 +280,7 @@ class KewajibanPesertaController extends Controller
                     'nik' => $asesi->no_ktp ?: ($request->user()?->no_ktp ?: '-'),
                     'jenis_sertifikat' => $asesi->jenis_sertifikat ?: 'ATPA',
                     'no_sertifikat' => $sertifikatNo,
+                    'tgl_sertifikat' => $tglTerbit,
                     'masa_berlaku' => $masaBerlaku,
                     'foto_sertifikat_url' => $fotoSertifikatUrl,
                     'status_masa_berlaku' => $this->statusMasaBerlaku($masaBerlaku),
@@ -237,13 +308,67 @@ class KewajibanPesertaController extends Controller
             return $error;
         }
 
+        $tglTerbit = $this->resolveTanggalSertifikat($asesi);
+        $today = now()->startOfDay();
+
+        // Evaluasi approval dan metadata per tahun berurutan
+        $allRecords = DB::table('asesi_pemeliharaan')
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->orderBy('tahun', 'asc')
+            ->get();
+
+        $approvedMap = [];
+        $metaPerTahun = [];
+        foreach ($allRecords as $item) {
+            $thInt = (int) $item->tahun;
+            $periode = $this->calculatePeriodePemeliharaan($tglTerbit, $thInt);
+            $mulaiCarbon = \Carbon\Carbon::parse($periode['tanggal_mulai'])->startOfDay();
+            $tempoCarbon = \Carbon\Carbon::parse($periode['tanggal_jatuh_tempo'])->startOfDay();
+            $isApp = ($item->status === 'DISETUJUI' || $item->status_pkb === 'DISETUJUI' || (!empty($item->ttd_rusdani) && !empty($item->ttd_nina)));
+            $approvedMap[$thInt] = $isApp;
+
+            $bisaUpload = true;
+            $pesanKunci = null;
+            $keteranganPemenuhan = null;
+            $derivedStatus = $item->status;
+
+            if ($isApp) {
+                $derivedStatus = 'DISETUJUI';
+                $bisaUpload = false;
+                $keteranganPemenuhan = "Pemeliharaan masih memenuhi untuk {$periode['tahun_ke_label']}";
+            } else {
+                if ($periode['tahun_ke'] > 1) {
+                    $prevTahun = $thInt - 1;
+                    $isPrevApp = !empty($approvedMap[$prevTahun]);
+                    $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+                    if ($isPrevApp) {
+                        // Tahun sebelumnya sudah di-ACC: tahun ini terbuka untuk pengajuan pemeliharaan
+                        $pesanKunci = null;
+                    } else {
+                        $derivedStatus = 'BELUM_WAKTUNYA';
+                        $bisaUpload = false;
+                        $pesanKunci = "Harap selesaikan kewajiban pemeliharaan {$prevLabel} terlebih dahulu.";
+                    }
+                }
+            }
+
+            $metaPerTahun[$thInt] = [
+                'periode' => $periode,
+                'status' => $derivedStatus,
+                'bisa_upload' => $bisaUpload,
+                'pesan_kunci' => $pesanKunci,
+                'keterangan_pemenuhan' => $keteranganPemenuhan,
+                'is_approved' => $isApp,
+            ];
+        }
+
         $rows = DB::table('asesi_pemeliharaan as p')
             ->leftJoin('asesi_pemeliharaan_pkb as pk', 'pk.id_pemeliharaan', '=', 'p.id')
             ->where('p.id_asesi', $asesi->no_pendaftaran)
             ->orderBy('p.tahun', 'desc')
             ->get([
                 'p.id', 'p.tahun', 'p.status', 'p.file_penunjukan', 'p.file_logbook',
-                'p.file_cover_tim', 'p.file_ka_andal',
+                'p.file_cover_tim', 'p.link_dokumen_lengkap', 'p.file_ka_andal',
                 'p.ttd_rusdani', 'p.tgl_ttd_rusdani', 'p.ttd_nina', 'p.tgl_ttd_nina', 'p.status_pkb', 'p.catatan_pkb',
                 'pk.id as pkb_id', 'pk.bentuk_kegiatan', 'pk.bentuk_lainnya', 'pk.tema',
                 'pk.penyelenggara', 'pk.lokasi', 'pk.waktu as pkb_waktu',
@@ -253,18 +378,38 @@ class KewajibanPesertaController extends Controller
         // Group PKB rows per pemeliharaan
         $grouped = [];
         foreach ($rows as $r) {
+            $thInt = (int) $r->tahun;
+            $meta = $metaPerTahun[$thInt] ?? null;
+            $periode = $meta['periode'] ?? $this->calculatePeriodePemeliharaan($tglTerbit, $thInt);
+            $effectiveStatus = $meta['status'] ?? $r->status;
+
             if (!isset($grouped[$r->id])) {
                 $grouped[$r->id] = [
                     'id' => $r->id,
-                    'tahun' => (int) $r->tahun,
-                    'status' => $r->status,
-                    'status_label' => $this->statusLabel($r->status),
+                    'tahun' => $thInt,
+                    'tahun_ke' => $periode['tahun_ke'],
+                    'tahun_ke_label' => $periode['tahun_ke_label'],
+                    'status' => $effectiveStatus,
+                    'status_label' => $this->statusLabel($effectiveStatus),
+                    'status_pkb' => $r->status_pkb ?: ($meta['is_approved'] ?? false ? 'DISETUJUI' : 'BELUM'),
+                    'catatan_pkb' => $r->catatan_pkb,
+                    'ttd_rusdani' => $r->ttd_rusdani,
+                    'tgl_ttd_rusdani' => $r->tgl_ttd_rusdani,
+                    'ttd_nina' => $r->ttd_nina,
+                    'tgl_ttd_nina' => $r->tgl_ttd_nina,
+                    'tanggal_mulai' => $periode['tanggal_mulai'],
+                    'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
+                    'keterangan_pemenuhan' => $meta['keterangan_pemenuhan'] ?? null,
+                    'pesan_kunci' => $meta['pesan_kunci'] ?? null,
+                    'bisa_upload' => $meta['bisa_upload'] ?? true,
                     'dokumen' => [
                         'penunjukan' => $r->file_penunjukan ? asset(self::dir() . '/' . $r->file_penunjukan) : null,
                         'logbook' => $r->file_logbook ? asset(self::dir() . '/' . $r->file_logbook) : null,
                         'cover_tim' => $r->file_cover_tim ? asset(self::dir() . '/' . $r->file_cover_tim) : null,
                         'ka_andal' => $r->file_ka_andal ? asset(self::dir() . '/' . $r->file_ka_andal) : null,
+                        'link_dokumen_lengkap' => $r->link_dokumen_lengkap ?? null,
                     ],
+                    'link_dokumen_lengkap' => $r->link_dokumen_lengkap ?? null,
                     'pkb_rows' => [],
                 ];
             }
@@ -305,6 +450,7 @@ class KewajibanPesertaController extends Controller
             'file_logbook' => 'required|file|mimes:pdf,jpg,jpeg|max:5120',
             'file_cover_tim' => 'required|file|mimes:pdf,jpg,jpeg|max:5120',
             'file_ka_andal' => 'required|file|mimes:pdf,jpg,jpeg|max:5120',
+            'link_dokumen_lengkap' => 'nullable|string|max:1000',
         ], [
             'file_penunjukan.required' => 'Dokumen Penunjukan/Surat Tugas wajib diunggah',
             'file_logbook.required' => 'Dokumen Logbook Kegiatan wajib diunggah',
@@ -325,11 +471,42 @@ class KewajibanPesertaController extends Controller
         $asesmen = AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)
             ->where('status_asesmen', 'K')->whereNotNull('no_serisertifikat')
             ->orderBy('id', 'desc')->first();
-        if (!$asesmen) {
+        if (!$asesmen && $asesi->status_sertifikat !== 'VALID' && empty($asesi->no_sertifikat)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Anda belum memiliki sertifikat aktif',
             ], 422);
+        }
+
+        $tglTerbit = $this->resolveTanggalSertifikat($asesi, $asesmen);
+        $periode = $this->calculatePeriodePemeliharaan($tglTerbit, (int) $tahun);
+        $mulaiCarbon = \Carbon\Carbon::parse($periode['tanggal_mulai'])->startOfDay();
+
+        // Guard: Jika tahun > 1 dan hari ini belum mencapai tanggal mulai
+        if ($periode['tahun_ke'] > 1) {
+            $prevTahun = (int) $tahun - 1;
+            $prevPem = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $asesi->no_pendaftaran)
+                ->where('tahun', $prevTahun)
+                ->first();
+            $prevApproved = $prevPem && ($prevPem->status === 'DISETUJUI' || $prevPem->status_pkb === 'DISETUJUI' || (!empty($prevPem->ttd_rusdani) && !empty($prevPem->ttd_nina)));
+
+            if ($prevApproved && now()->startOfDay()->lt($mulaiCarbon)) {
+                $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+                $tglMulaiIndo = $this->formatTanggalIndo($periode['tanggal_mulai']);
+                return response()->json([
+                    'success' => false,
+                    'message' => "Pemeliharaan masih memenuhi untuk {$prevLabel}. Pengajuan Pemeliharaan {$periode['tahun_ke_label']} baru dapat dilakukan mulai {$tglMulaiIndo} (setelah periode {$prevLabel} selesai).",
+                ], 422);
+            }
+
+            if (!$prevApproved) {
+                $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+                return response()->json([
+                    'success' => false,
+                    'message' => "Harap selesaikan kewajiban pemeliharaan {$prevLabel} terlebih dahulu.",
+                ], 422);
+            }
         }
 
         $record = DB::table('asesi_pemeliharaan')
@@ -344,7 +521,8 @@ class KewajibanPesertaController extends Controller
         }
 
         // bisa_upload guard
-        $derived = $this->deriveStatus($record->status, (int) $tahun, false, false);
+        $tempoCarbon = \Carbon\Carbon::parse($periode['tanggal_jatuh_tempo'])->startOfDay();
+        $derived = $this->deriveStatusWithDates($record->status, $tempoCarbon, false, false, $mulaiCarbon);
         if (!$derived['bisa_upload'] && $record->status !== 'PERLU_PERBAIKAN') {
             return response()->json([
                 'success' => false,
@@ -371,6 +549,11 @@ class KewajibanPesertaController extends Controller
                     $file->move($dest, $fileName);
                     $updates[$field] = $fileName;
                 }
+            }
+
+            $link = $request->input('link_dokumen_lengkap', $request->input('link_cover_tim'));
+            if ($link !== null) {
+                $updates['link_dokumen_lengkap'] = $link;
             }
 
             DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updates);
@@ -415,6 +598,37 @@ class KewajibanPesertaController extends Controller
             ], 422);
         }
 
+        $tglTerbit = $this->resolveTanggalSertifikat($asesi);
+        $periode = $this->calculatePeriodePemeliharaan($tglTerbit, (int) $tahun);
+        $mulaiCarbon = \Carbon\Carbon::parse($periode['tanggal_mulai'])->startOfDay();
+
+        // Guard: Jika tahun > 1 dan periode tahun berjalan masih memenuhi (belum jatuh tempo)
+        if ($periode['tahun_ke'] > 1) {
+            $prevTahun = (int) $tahun - 1;
+            $prevPem = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $asesi->no_pendaftaran)
+                ->where('tahun', $prevTahun)
+                ->first();
+            $prevApproved = $prevPem && ($prevPem->status === 'DISETUJUI' || $prevPem->status_pkb === 'DISETUJUI' || (!empty($prevPem->ttd_rusdani) && !empty($prevPem->ttd_nina)));
+
+            if ($prevApproved && now()->startOfDay()->lt($mulaiCarbon)) {
+                $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+                $tglMulaiIndo = $this->formatTanggalIndo($periode['tanggal_mulai']);
+                return response()->json([
+                    'success' => false,
+                    'message' => "Pemeliharaan masih memenuhi untuk {$prevLabel}. Pengajuan Form PKB {$periode['tahun_ke_label']} baru dapat dilakukan mulai {$tglMulaiIndo} (setelah periode {$prevLabel} selesai).",
+                ], 422);
+            }
+
+            if (!$prevApproved) {
+                $prevLabel = $this->calculatePeriodePemeliharaan($tglTerbit, $prevTahun)['tahun_ke_label'];
+                return response()->json([
+                    'success' => false,
+                    'message' => "Harap selesaikan kewajiban pemeliharaan {$prevLabel} terlebih dahulu.",
+                ], 422);
+            }
+        }
+
         $record = DB::table('asesi_pemeliharaan')
             ->where('id_asesi', $asesi->no_pendaftaran)->where('tahun', $tahun)
             ->first();
@@ -451,6 +665,24 @@ class KewajibanPesertaController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => "Baris " . ($i + 1) . ": sebutkan bentuk kegiatan lainnya",
+                ], 422);
+            }
+
+            // Validasi tanggal kegiatan PKB:
+            // Khusus tahun kedua dst: kegiatan harus dilaksanakan pada atau setelah periode dimulai
+            $waktuParsed = null;
+            if (!empty($row['waktu'])) {
+                try {
+                    $waktuParsed = \Carbon\Carbon::parse($row['waktu'])->startOfDay();
+                } catch (\Throwable $e) {}
+            }
+
+            if ($waktuParsed && $waktuParsed->lt($mulaiCarbon)) {
+                $tglMulaiIndo = $this->formatTanggalIndo($periode['tanggal_mulai']);
+                $prevLabel = $periode['tahun_ke'] > 1 ? $this->calculatePeriodePemeliharaan($tglTerbit, (int) $tahun - 1)['tahun_ke_label'] : 'periode sebelumnya';
+                return response()->json([
+                    'success' => false,
+                    'message' => "Baris " . ($i + 1) . " ({$row['tema']}): Tanggal pelaksanaan ({$this->formatTanggalIndo($row['waktu'])}) tidak valid. Kegiatan untuk {$periode['tahun_ke_label']} harus dilaksanakan mulai tanggal {$tglMulaiIndo} (setelah periode {$prevLabel} selesai).",
                 ], 422);
             }
         }
@@ -494,6 +726,19 @@ class KewajibanPesertaController extends Controller
                     'deskripsi_singkat' => $row['deskripsi_singkat'] ?? null,
                     'file_bukti' => $fileName ?: ($row['dokumen_bukti'] ?? null),
                 ]);
+            }
+
+            // Pengisian Form PKB hanya mencatat/memperbarui daftar kegiatan PKB di asesi_pemeliharaan_pkb.
+            // Jangan mengubah status pemeliharaan ataupun mengisi tanggal_upload, karena upload berkas resmi
+            // (penunjukan, logbook, cover_tim, ka_andal) dilakukan melalui tombol "Upload PKB" (submitPemeliharaan).
+            $updatePkb = [];
+            if ($record->status_pkb === 'PERLU_PERBAIKAN') {
+                $updatePkb['status_pkb'] = 'REVISI_TERKIRIM';
+            } elseif (empty($record->status_pkb) || $record->status_pkb === 'BELUM') {
+                $updatePkb['status_pkb'] = 'TERISI';
+            }
+            if (!empty($updatePkb)) {
+                DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updatePkb);
             }
 
             DB::commit();
@@ -1038,81 +1283,183 @@ class KewajibanPesertaController extends Controller
     }
 
     /**
-     * Lazy-create records (§7 fallback): pemeliharaan tahun berjalan +
-     * evaluasi berikutnya utk sertifikat aktif.
+     * Resolve tanggal terbit sertifikat asesi (fallback kronologis).
      */
-    private function ensureRecords(string $noPendaftaran, string $sertifikatNo, $asesmen = null, $asesi = null): void
+    private function resolveTanggalSertifikat($asesi, $sertifikatAsesmen = null): string
     {
-        $tahunIni = (int) now()->year;
+        if (!empty($asesi->tgl_sertifikat)) {
+            return date('Y-m-d', strtotime($asesi->tgl_sertifikat));
+        }
+        if (!empty($sertifikatAsesmen?->tgl_sertifikat)) {
+            return date('Y-m-d', strtotime($sertifikatAsesmen->tgl_sertifikat));
+        }
+        if (!empty($asesi->masa_berlaku_sertifikat)) {
+            return date('Y-m-d', strtotime('-5 years', strtotime($asesi->masa_berlaku_sertifikat)));
+        }
+        if (!empty($sertifikatAsesmen?->masa_berlaku)) {
+            return date('Y-m-d', strtotime('-5 years', strtotime($sertifikatAsesmen->masa_berlaku)));
+        }
+        return now()->format('Y-m-d');
+    }
 
-        // Pemeliharaan tahun berjalan
-        $exists = DB::table('asesi_pemeliharaan')
-            ->where('id_asesi', $noPendaftaran)->where('tahun', $tahunIni)->exists();
-        if (!$exists) {
-            DB::table('asesi_pemeliharaan')->insert([
-                'id_asesi' => $noPendaftaran,
-                'id_asesmen' => $asesmen?->id,
-                'sertifikat_no' => $sertifikatNo,
-                'tahun' => $tahunIni,
-                'status' => 'BELUM',
-                'waktu' => now(),
-            ]);
+    /**
+     * Menghitung tanggal mulai dan tanggal jatuh tempo pemeliharaan per tahun berdasarkan tanggal terbit sertifikat:
+     * - Tahun 1 (Tahun Pertama): Mulai = Tanggal Terbit, Jatuh Tempo = +1 Tahun
+     * - Tahun 2 (Tahun Kedua): Mulai = +1 Tahun + 1 Hari (1 hari setelah pemeliharaan 1 tahun selesai), Jatuh Tempo = +2 Tahun
+     * - Tahun 3 (Tahun Ketiga): Mulai = +2 Tahun + 1 Hari, Jatuh Tempo = +3 Tahun
+     * - Tahun 4 (Tahun Keempat): Mulai = +3 Tahun + 1 Hari, Jatuh Tempo = +4 Tahun
+     * - Tahun 5 (Tahun Kelima): Mulai = +4 Tahun + 1 Hari, Jatuh Tempo = +5 Tahun
+     */
+    private function calculatePeriodePemeliharaan(string $tglTerbit, int $tahun): array
+    {
+        $carbonTerbit = \Carbon\Carbon::parse($tglTerbit)->startOfDay();
+        $tahunTerbit = (int) $carbonTerbit->year;
+        $tahunKe = max(1, $tahun - $tahunTerbit + 1);
+
+        $labels = [
+            1 => 'Tahun Pertama',
+            2 => 'Tahun Kedua',
+            3 => 'Tahun Ketiga',
+            4 => 'Tahun Keempat',
+            5 => 'Tahun Kelima',
+            6 => 'Tahun Keenam',
+            7 => 'Tahun Ketujuh',
+            8 => 'Tahun Kedelapan',
+            9 => 'Tahun Kesembilan',
+            10 => 'Tahun Kesepuluh',
+        ];
+        $tahunKeLabel = $labels[$tahunKe] ?? "Tahun Ke-{$tahunKe}";
+
+        if ($tahunKe === 1) {
+            $mulai = $carbonTerbit->copy()->toDateString();
+            $tempo = $carbonTerbit->copy()->addYears(1)->toDateString();
+        } else {
+            $mulai = $carbonTerbit->copy()->addYears($tahunKe - 1)->addDays(1)->toDateString();
+            $tempo = $carbonTerbit->copy()->addYears($tahunKe)->toDateString();
         }
 
-        // Evaluasi berikutnya (masa_berlaku - 3 tahun)
-        $masaBerlakuRaw = $asesmen?->masa_berlaku ?: ($asesi?->masa_berlaku_sertifikat ?: date('Y-m-d', strtotime('+5 years')));
-        if (!empty($masaBerlakuRaw)) {
-            $masaBerlaku = (int) date('Y', strtotime($masaBerlakuRaw));
-            $tahunEvaluasi = $masaBerlaku - 3;
-            if ($tahunEvaluasi > 2000) {
-                $tahunKe = 3;
-                $existsE = DB::table('asesi_evaluasi')
-                    ->where('id_asesi', $noPendaftaran)->where('tahun_ke', $tahunKe)->exists();
-                if (!$existsE) {
-                    DB::table('asesi_evaluasi')->insert([
-                        'id_asesi' => $noPendaftaran,
-                        'sertifikat_no' => $sertifikatNo,
-                        'tahun_ke' => $tahunKe,
-                        'tahun_jatuh_tempo' => $tahunEvaluasi,
-                        'status' => 'BELUM_UPLOAD',
-                        'waktu' => now(),
-                    ]);
-                }
-            }
+        return [
+            'tahun_ke' => $tahunKe,
+            'tahun_ke_label' => $tahunKeLabel,
+            'tanggal_mulai' => $mulai,
+            'tanggal_jatuh_tempo' => $tempo,
+            'tahun_terbit' => $tahunTerbit,
+        ];
+    }
+
+    /**
+     * Format tanggal Indonesia (contoh: 25 September 2027)
+     */
+    private function formatTanggalIndo(?string $dateStr): string
+    {
+        if (empty($dateStr)) return '-';
+        $bulanIndo = [
+            1 => 'Januari', 2 => 'Februari', 3 => 'Maret', 4 => 'April',
+            5 => 'Mei', 6 => 'Juni', 7 => 'Juli', 8 => 'Agustus',
+            9 => 'September', 10 => 'Oktober', 11 => 'November', 12 => 'Desember'
+        ];
+        try {
+            $c = \Carbon\Carbon::parse($dateStr);
+            $d = (int) $c->format('j');
+            $m = (int) $c->format('n');
+            $y = $c->format('Y');
+            return "{$d} {$bulanIndo[$m]} {$y}";
+        } catch (\Throwable $e) {
+            return $dateStr;
         }
     }
 
     /**
-     * Derive status (§3.2) — evaluasi berurutan per record.
+     * Lazy-create records pemeliharaan (rolling window dinamis: selalu sedia 5 tahun aktif kedepan saat tahun sebelumnya di-ACC)
+     * + evaluasi 3 tahunan berdasarkan tanggal terbit sertifikat.
+     */
+    private function ensureRecords(string $noPendaftaran, string $sertifikatNo, $asesmen = null, $asesi = null, ?string $tglTerbit = null): void
+    {
+        $carbonTerbit = \Carbon\Carbon::parse($tglTerbit ?: $this->resolveTanggalSertifikat($asesi, $asesmen))->startOfDay();
+        $tahunTerbit = (int) $carbonTerbit->year;
+
+        // Hitung berapa tahun pemeliharaan yang sudah di-ACC / DISETUJUI
+        $approvedCount = DB::table('asesi_pemeliharaan')
+            ->where('id_asesi', $noPendaftaran)
+            ->where(function ($q) {
+                $q->where('status', 'DISETUJUI')
+                  ->orWhere('status_pkb', 'DISETUJUI')
+                  ->orWhere(function ($sub) {
+                      $sub->whereNotNull('ttd_rusdani')->whereNotNull('ttd_nina');
+                  });
+            })
+            ->count();
+
+        // Total tahun = minimal 5 tahun, atau jika sudah di-ACC bertambah dinamis (+5 tahun horizon)
+        // Contoh: Tahun Pertama di-ACC ($approvedCount=1) -> $totalYears=6 (Tahun Keenam otomatis terbuka/dibuat)
+        $totalYears = max(5, $approvedCount + 5);
+
+        for ($k = 1; $k <= $totalYears; $k++) {
+            $th = $tahunTerbit + $k - 1;
+            $exists = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $noPendaftaran)->where('tahun', $th)->exists();
+            if (!$exists) {
+                DB::table('asesi_pemeliharaan')->insert([
+                    'id_asesi' => $noPendaftaran,
+                    'id_asesmen' => $asesmen?->id,
+                    'sertifikat_no' => $sertifikatNo,
+                    'tahun' => $th,
+                    'status' => 'BELUM',
+                    'waktu' => now(),
+                ]);
+            }
+        }
+
+        // Evaluasi 3 tahunan (jatuh tempo = tahun terbit + 3)
+        $tahunEvaluasi = $tahunTerbit + 3;
+        $existsE = DB::table('asesi_evaluasi')
+            ->where('id_asesi', $noPendaftaran)->where('tahun_ke', 3)->exists();
+        if (!$existsE) {
+            DB::table('asesi_evaluasi')->insert([
+                'id_asesi' => $noPendaftaran,
+                'sertifikat_no' => $sertifikatNo,
+                'tahun_ke' => 3,
+                'tahun_jatuh_tempo' => $tahunEvaluasi,
+                'status' => 'BELUM_WAKTUNYA',
+                'waktu' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Derive status dengan tanggal Carbon akurat (tempo & mulai).
      * Return ['status' => ..., 'bisa_upload' => bool]
      */
-    private function deriveStatus($storedStatus, int $tahun, bool $isEvaluasi, bool $adaFile): array
+    private function deriveStatusWithDates($storedStatus, \Carbon\Carbon $tempo, bool $isEvaluasi, bool $adaFile, ?\Carbon\Carbon $mulai = null): array
     {
         $today = now()->startOfDay();
-        $tempo = \Carbon\Carbon::create($tahun, 12, 31)->startOfDay();
-        $bulanMenujuTempo = $today->diffInMonths($tempo, false);   // negatif = sudah lewat
 
-        // 1. Evaluasi: hari ini < tahun tempo → BELUM_WAKTUNYA
-        if ($isEvaluasi && $today->year < $tahun) {
+        // 1. Jika mulai ditentukan dan hari ini < mulai -> BELUM_WAKTUNYA
+        if ($mulai && $today->lt($mulai)) {
             return ['status' => 'BELUM_WAKTUNYA', 'bisa_upload' => false];
         }
 
-        // 2. Sudah DISETUJUI / DITOLAK → tetap (kecuali TERLAMBAT override tak relevan)
+        // 2. Evaluasi: hari ini < tahun tempo -> BELUM_WAKTUNYA
+        if ($isEvaluasi && $today->year < $tempo->year) {
+            return ['status' => 'BELUM_WAKTUNYA', 'bisa_upload' => false];
+        }
+
+        // 3. Sudah DISETUJUI / DITOLAK -> tetap
         if ($storedStatus === 'DISETUJUI') {
             return ['status' => 'DISETUJUI', 'bisa_upload' => false];
         }
 
-        // 3. Ada file (sudah upload) & hari ini ≤ tempo → SUDAH_UPLOAD
+        // 4. Ada file (sudah upload) & hari ini <= tempo -> SUDAH_UPLOAD
         if ($adaFile && $today->lte($tempo)) {
             return ['status' => 'SUDAH_UPLOAD', 'bisa_upload' => false];
         }
 
-        // 4. PERLU_PERBAIKAN tetap sampai upload ulang
+        // 5. PERLU_PERBAIKAN tetap sampai upload ulang
         if ($storedStatus === 'PERLU_PERBAIKAN') {
             return ['status' => 'PERLU_PERBAIKAN', 'bisa_upload' => true];
         }
 
-        // 5. Lewat tempo & belum DISETUJUI → TERLAMBAT (override)
+        // 6. Lewat tempo & belum DISETUJUI -> TERLAMBAT (override)
         if ($today->gt($tempo)) {
             if ($storedStatus === 'DITOLAK') {
                 return ['status' => 'DITOLAK', 'bisa_upload' => false];
@@ -1123,17 +1470,27 @@ class KewajibanPesertaController extends Controller
             return ['status' => 'TERLAMBAT', 'bisa_upload' => true];
         }
 
-        // 6. ≤ 3 bulan sebelum tempo → AKAN_JATUH_TEMPO
-        if ($bulanMenujuTempo !== false && $bulanMenujuTempo <= self::BATAS_AKAN_JATUH_TEMPO_BULAN) {
+        // 7. <= 3 bulan sebelum tempo -> AKAN_JATUH_TEMPO
+        $bulanMenujuTempo = $today->diffInMonths($tempo, false);
+        if ($bulanMenujuTempo !== false && $bulanMenujuTempo >= 0 && $bulanMenujuTempo <= self::BATAS_AKAN_JATUH_TEMPO_BULAN) {
             return ['status' => 'AKAN_JATUH_TEMPO', 'bisa_upload' => true];
         }
 
-        // 7. Belum ada file → BELUM / BELUM_UPLOAD
+        // 8. Belum ada file -> BELUM / BELUM_UPLOAD
         if (!$adaFile) {
             return ['status' => $isEvaluasi ? 'BELUM_UPLOAD' : 'BELUM', 'bisa_upload' => true];
         }
 
         return ['status' => 'SUDAH_UPLOAD', 'bisa_upload' => false];
+    }
+
+    /**
+     * Fallback deriveStatus untuk pemanggilan lama.
+     */
+    private function deriveStatus($storedStatus, int $tahun, bool $isEvaluasi, bool $adaFile): array
+    {
+        $tempo = \Carbon\Carbon::create($tahun, 12, 31)->startOfDay();
+        return $this->deriveStatusWithDates($storedStatus, $tempo, $isEvaluasi, $adaFile);
     }
 
     private function statusLabel(string $status): string
@@ -1159,8 +1516,8 @@ class KewajibanPesertaController extends Controller
         }
         $bulan = now()->startOfDay()->diffInMonths(\Carbon\Carbon::parse($masaBerlaku)->startOfDay(), false);
         if ($bulan !== null && $bulan < 0) return 'KADALUARSA';
-        if ($bulan !== null && $bulan <= 2) return 'KADALUARSA';   // ≤2 bln → merah
-        if ($bulan !== null && $bulan <= 6) return 'SEGERA BERAKHIR'; // ≤6 bln → kuning
+        if ($bulan !== null && $bulan <= 2) return 'KADALUARSA';   // <=2 bln -> merah
+        if ($bulan !== null && $bulan <= 6) return 'SEGERA BERAKHIR'; // <=6 bln -> kuning
         return 'AKTIF';
     }
 

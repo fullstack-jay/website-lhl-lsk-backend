@@ -96,6 +96,9 @@ class AdminKewajibanPesertaController extends Controller
             $fileLogbook = $pem ? $pem->file_logbook : null;
             $fileCoverTim = $pem ? $pem->file_cover_tim : null;
             $fileKaAndal = $pem ? $pem->file_ka_andal : null;
+            $linkDokumenLengkap = $pem && isset($pem->link_dokumen_lengkap) ? $pem->link_dokumen_lengkap : null;
+
+            $periode = $this->calculatePeriodePemeliharaan($asesi->tgl_sertifikat, $tahun);
 
             $transformed[] = [
                 'id' => $asesi->id,
@@ -106,21 +109,27 @@ class AdminKewajibanPesertaController extends Controller
                 'email' => $asesi->email,
                 'jenis_sertifikat' => $asesi->jenis_sertifikat ?: 'ATPA',
                 'no_sertifikat' => $asesi->no_sertifikat ?: 'SERT/' . $tahun . '/' . ($asesi->jenis_sertifikat ?: 'ATPA') . '/0001',
+                'tgl_sertifikat' => $asesi->tgl_sertifikat ? date('Y-m-d', strtotime($asesi->tgl_sertifikat)) : null,
                 'sertifikat_url' => $asesi->file_sertifikat_aktif ? "{$baseUrl}/storage/foto_asesi/" . $asesi->file_sertifikat_aktif : null,
                 'status_sertifikat' => $asesi->status_sertifikat,
 
                 'pemeliharaan_id' => $pemId,
                 'tahun_pemeliharaan' => $tahun,
+                'tahun_ke' => $periode['tahun_ke'],
+                'tahun_ke_label' => $periode['tahun_ke_label'],
                 'status_pemeliharaan' => $pemStatus,
                 'status_pemeliharaan_label' => $statusLabel,
-                'tanggal_jatuh_tempo' => "{$tahun}-12-31",
+                'tanggal_mulai' => $periode['tanggal_mulai'],
+                'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
                 'tanggal_upload_pemeliharaan' => $pem && $pem->tanggal_upload ? date('Y-m-d H:i', strtotime($pem->tanggal_upload)) : null,
                 'catatan_evaluator' => $pem ? $pem->catatan_evaluator : null,
+                'link_dokumen_lengkap' => $linkDokumenLengkap,
                 'dokumen_pemeliharaan' => [
                     'penunjukan' => $filePenunjukan,
                     'logbook' => $fileLogbook,
                     'cover_tim' => $fileCoverTim,
                     'ka_andal' => $fileKaAndal,
+                    'link_dokumen_lengkap' => $linkDokumenLengkap,
                 ],
 
                 'jumlah_pkb' => $pemId && isset($pkbCounts[$pemId]) ? (int) $pkbCounts[$pemId] : 0,
@@ -274,6 +283,8 @@ class AdminKewajibanPesertaController extends Controller
             default => 'Belum Upload',
         } : 'Belum Upload';
 
+        $periode = $this->calculatePeriodePemeliharaan($asesi->tgl_sertifikat, $tahun);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -286,19 +297,25 @@ class AdminKewajibanPesertaController extends Controller
                     'email' => $asesi->email,
                     'jenis_sertifikat' => $asesi->jenis_sertifikat ?: 'ATPA',
                     'no_sertifikat' => $asesi->no_sertifikat,
+                    'tgl_sertifikat' => $asesi->tgl_sertifikat ? date('Y-m-d', strtotime($asesi->tgl_sertifikat)) : null,
                     'status_sertifikat' => $asesi->status_sertifikat,
                     'pemeliharaan_id' => $pem ? $pem->id : null,
                     'tahun_pemeliharaan' => $tahun,
+                    'tahun_ke' => $periode['tahun_ke'],
+                    'tahun_ke_label' => $periode['tahun_ke_label'],
                     'status_pemeliharaan' => $pem ? $pem->status : 'BELUM',
                     'status_pemeliharaan_label' => $statusLabel,
-                    'tanggal_jatuh_tempo' => "{$tahun}-12-31",
+                    'tanggal_mulai' => $periode['tanggal_mulai'],
+                    'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
                     'tanggal_upload_pemeliharaan' => $pem ? $pem->tanggal_upload : null,
                     'catatan_evaluator' => $pem ? $pem->catatan_evaluator : null,
+                    'link_dokumen_lengkap' => $pem && isset($pem->link_dokumen_lengkap) ? $pem->link_dokumen_lengkap : null,
                     'dokumen_pemeliharaan' => [
                         'penunjukan' => $pem ? $pem->file_penunjukan : null,
                         'logbook' => $pem ? $pem->file_logbook : null,
                         'cover_tim' => $pem ? $pem->file_cover_tim : null,
                         'ka_andal' => $pem ? $pem->file_ka_andal : null,
+                        'link_dokumen_lengkap' => $pem && isset($pem->link_dokumen_lengkap) ? $pem->link_dokumen_lengkap : null,
                     ],
                 ],
                 'pkb_rows' => $pkbRows,
@@ -408,14 +425,51 @@ class AdminKewajibanPesertaController extends Controller
             $updates['tgl_ttd_nina'] = $request->input('tgl_ttd_nina', date('d/m/Y'));
         }
 
+        // Tandai pemeliharaan terpenuhi / DISETUJUI saat form PKB disetujui / di-ACC
+        if ($statusPkb === 'DISETUJUI' || ($request->has('ttd_rusdani') && $request->has('ttd_nina'))) {
+            $updates['status'] = 'DISETUJUI';
+            $updates['tanggal_evaluasi'] = now();
+        }
+
         DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updates);
+
+        $periode = $this->calculatePeriodePemeliharaan(null, (int) $record->tahun);
+        $tahunLabel = $periode['tahun_ke_label'] ?? ('Tahun ' . $record->tahun);
+
+        // Jika disetujui, pastikan rolling window terbuka (contoh: Tahun 1 disetujui -> Tahun 6 otomatis dibuat)
+        if ($statusPkb === 'DISETUJUI' || (!empty($updates['status']) && $updates['status'] === 'DISETUJUI')) {
+            $approvedCount = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $record->id_asesi)
+                ->where(function ($q) {
+                    $q->where('status', 'DISETUJUI')
+                      ->orWhere('status_pkb', 'DISETUJUI');
+                })
+                ->count();
+            $totalYears = max(5, $approvedCount + 5);
+            $minTahun = DB::table('asesi_pemeliharaan')->where('id_asesi', $record->id_asesi)->min('tahun') ?: $record->tahun;
+            for ($k = 1; $k <= $totalYears; $k++) {
+                $th = $minTahun + $k - 1;
+                $exists = DB::table('asesi_pemeliharaan')->where('id_asesi', $record->id_asesi)->where('tahun', $th)->exists();
+                if (!$exists) {
+                    DB::table('asesi_pemeliharaan')->insert([
+                        'id_asesi' => $record->id_asesi,
+                        'sertifikat_no' => $record->sertifikat_no,
+                        'tahun' => $th,
+                        'status' => 'BELUM',
+                        'waktu' => now(),
+                    ]);
+                }
+            }
+        }
 
         // Notifikasi ke peserta
         DB::table('asesi_notifikasi')->insert([
             'id_asesi' => $record->id_asesi,
             'tipe' => $statusPkb === 'DISETUJUI' ? 'success' : 'warning',
-            'judul' => 'Pengesahan Form PKB Tahun ' . $record->tahun,
-            'pesan' => 'Formulir PKB Anda telah diverifikasi dan disahkan oleh Ketua LSK dan Kabid Sertifikasi.',
+            'judul' => $statusPkb === 'DISETUJUI' ? "Pemeliharaan PKB ({$tahunLabel}) Disetujui" : ("Catatan Revisi PKB " . $record->tahun),
+            'pesan' => $statusPkb === 'DISETUJUI'
+                ? "Selamat! Pengajuan Pemeliharaan PKB {$tahunLabel} (Tahun {$record->tahun}) Anda telah disetujui & disahkan oleh Admin. Dokumen telah dipindahkan ke tab Arsip Pemeliharaan PKB."
+                : ('Evaluator meminta perbaikan Form PKB Tahun ' . $record->tahun . ($request->input('catatan_pkb') ? ': ' . $request->input('catatan_pkb') : '.')),
             'kategori' => 'pemeliharaan',
             'dibaca' => 0,
             'waktu' => now(),
@@ -491,12 +545,43 @@ class AdminKewajibanPesertaController extends Controller
             'tanggal_evaluasi' => now(),
         ]);
 
+        $periode = $this->calculatePeriodePemeliharaan(null, (int) $record->tahun);
+        $tahunLabel = $periode['tahun_ke_label'] ?? ('Tahun ' . $record->tahun);
+
+        // Jika disetujui, pastikan rolling window terbuka (contoh: Tahun 1 disetujui -> Tahun 6 otomatis dibuat)
+        if ($request->status === 'DISETUJUI') {
+            $approvedCount = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $record->id_asesi)
+                ->where(function ($q) {
+                    $q->where('status', 'DISETUJUI')
+                      ->orWhere('status_pkb', 'DISETUJUI');
+                })
+                ->count();
+            $totalYears = max(5, $approvedCount + 5);
+            $minTahun = DB::table('asesi_pemeliharaan')->where('id_asesi', $record->id_asesi)->min('tahun') ?: $record->tahun;
+            for ($k = 1; $k <= $totalYears; $k++) {
+                $th = $minTahun + $k - 1;
+                $exists = DB::table('asesi_pemeliharaan')->where('id_asesi', $record->id_asesi)->where('tahun', $th)->exists();
+                if (!$exists) {
+                    DB::table('asesi_pemeliharaan')->insert([
+                        'id_asesi' => $record->id_asesi,
+                        'sertifikat_no' => $record->sertifikat_no,
+                        'tahun' => $th,
+                        'status' => 'BELUM',
+                        'waktu' => now(),
+                    ]);
+                }
+            }
+        }
+
         // Kirim notifikasi ke peserta
         DB::table('asesi_notifikasi')->insert([
             'id_asesi' => $record->id_asesi,
             'tipe' => $request->status === 'DISETUJUI' ? 'success' : ($request->status === 'PERLU_PERBAIKAN' ? 'warning' : 'error'),
-            'judul' => 'Hasil Evaluasi Pemeliharaan Tahun ' . $record->tahun,
-            'pesan' => 'Status pemeliharaan sertifikat Anda telah dievaluasi: ' . $request->status . ($request->catatan ? '. Catatan: ' . $request->catatan : ''),
+            'judul' => $request->status === 'DISETUJUI' ? "Pemeliharaan PKB ({$tahunLabel}) Disetujui" : ("Hasil Evaluasi Pemeliharaan " . $record->tahun),
+            'pesan' => $request->status === 'DISETUJUI'
+                ? "Selamat! Pengajuan Pemeliharaan PKB {$tahunLabel} (Tahun {$record->tahun}) Anda telah disetujui & disahkan oleh Admin. Dokumen telah dipindahkan ke tab Arsip Pemeliharaan PKB."
+                : ('Status pemeliharaan sertifikat Anda telah dievaluasi: ' . $request->status . ($request->catatan ? '. Catatan: ' . $request->catatan : '')),
             'kategori' => 'pemeliharaan',
             'dibaca' => 0,
             'waktu' => now(),
@@ -506,5 +591,45 @@ class AdminKewajibanPesertaController extends Controller
             'success' => true,
             'message' => 'Status pemeliharaan tahun ' . $record->tahun . ' berhasil diperbarui menjadi ' . $request->status,
         ]);
+    }
+
+    /**
+     * Menghitung periode & tanggal jatuh tempo pemeliharaan tahunan berdasarkan tanggal terbit sertifikat
+     */
+    private function calculatePeriodePemeliharaan(?string $tglTerbit, int $tahun): array
+    {
+        $carbonTerbit = !empty($tglTerbit) ? \Carbon\Carbon::parse($tglTerbit)->startOfDay() : \Carbon\Carbon::create($tahun, 1, 1)->startOfDay();
+        $tahunTerbit = (int) $carbonTerbit->year;
+        $tahunKe = max(1, $tahun - $tahunTerbit + 1);
+
+        $labels = [
+            1 => 'Tahun Pertama',
+            2 => 'Tahun Kedua',
+            3 => 'Tahun Ketiga',
+            4 => 'Tahun Keempat',
+            5 => 'Tahun Kelima',
+            6 => 'Tahun Keenam',
+            7 => 'Tahun Ketujuh',
+            8 => 'Tahun Kedelapan',
+            9 => 'Tahun Kesembilan',
+            10 => 'Tahun Kesepuluh',
+        ];
+        $tahunKeLabel = $labels[$tahunKe] ?? "Tahun Ke-{$tahunKe}";
+
+        if ($tahunKe === 1) {
+            $mulai = $carbonTerbit->copy()->toDateString();
+            $tempo = $carbonTerbit->copy()->addYears(1)->toDateString();
+        } else {
+            $mulai = $carbonTerbit->copy()->addYears($tahunKe - 1)->addDays(1)->toDateString();
+            $tempo = $carbonTerbit->copy()->addYears($tahunKe)->toDateString();
+        }
+
+        return [
+            'tahun_ke' => $tahunKe,
+            'tahun_ke_label' => $tahunKeLabel,
+            'tanggal_mulai' => $mulai,
+            'tanggal_jatuh_tempo' => $tempo,
+            'tahun_terbit' => $tahunTerbit,
+        ];
     }
 }

@@ -82,10 +82,11 @@ class Asesi extends Model
     ];
 
     protected $casts = [
-        'tgl_lahir' => 'date',
-        'tgl_ijazah' => 'date',
-        'tgl_sertifikat' => 'date',
-        'tgl_daftar' => 'date',
+        'tgl_lahir' => 'date:Y-m-d',
+        'tgl_ijazah' => 'date:Y-m-d',
+        'tgl_sertifikat' => 'date:Y-m-d',
+        'tgl_daftar' => 'date:Y-m-d',
+        'masa_berlaku_sertifikat' => 'date:Y-m-d',
         'tahun_lulus' => 'integer',
         'usia' => 'integer',
         'angkatan' => 'integer',

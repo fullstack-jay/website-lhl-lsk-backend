@@ -54,8 +54,8 @@ class PesertaProfilController extends Controller
                 $items->push([
                     'no_sertifikat' => $r->no_sertifikat,
                     'jenis_sertifikat' => $r->jenis_sertifikat,
-                    'tgl_sertifikat' => $r->tgl_sertifikat,
-                    'tahun' => $r->tahun,
+                    'tgl_sertifikat' => $r->tgl_sertifikat ? (\Carbon\Carbon::parse($r->tgl_sertifikat)->format('Y-m-d')) : null,
+                    'tahun' => $r->tahun ?: ($r->tgl_sertifikat ? (int) date('Y', strtotime($r->tgl_sertifikat)) : null),
                     'file_sertifikat' => $r->file_sertifikat,
                     'file_url' => $r->file_sertifikat
                         ? asset('storage/foto_asesi/' . $r->file_sertifikat) : null,
@@ -69,8 +69,9 @@ class PesertaProfilController extends Controller
             $items->push([
                 'no_sertifikat' => $asesi->no_sertifikat,
                 'jenis_sertifikat' => $asesi->jenis_sertifikat,
-                'tgl_sertifikat' => $asesi->tgl_sertifikat,
-                'tahun' => $asesi->tgl_sertifikat ? (int) date('Y', strtotime($asesi->tgl_sertifikat)) : null,
+                'tgl_sertifikat' => $asesi->tgl_sertifikat ? (\Carbon\Carbon::parse($asesi->tgl_sertifikat)->format('Y-m-d')) : null,
+                'masa_berlaku_sertifikat' => $asesi->masa_berlaku_sertifikat ? (\Carbon\Carbon::parse($asesi->masa_berlaku_sertifikat)->format('Y-m-d')) : null,
+                'tahun' => $asesi->angkatan ?: ($asesi->tgl_sertifikat ? (int) date('Y', strtotime($asesi->tgl_sertifikat)) : null),
                 'file_sertifikat' => $asesi->file_sertifikat_aktif,
                 'file_url' => $asesi->file_sertifikat_aktif
                     ? asset('storage/foto_asesi/' . $asesi->file_sertifikat_aktif) : null,
@@ -126,6 +127,8 @@ class PesertaProfilController extends Controller
                     'kelurahan' => $user->kelurahan ?: ($pendaftaran?->kelurahan),
                     'kodepos' => $pendaftaran?->kode_pos,
                     'foto_url' => $user->foto ? url('storage/foto_asesi/' . $user->foto) : null,
+                    'has_pendaftaran_pelatihan' => false,
+                    'total_skema_diikuti' => 0,
                     'is_empty' => true,
                 ],
             ]);
@@ -191,11 +194,16 @@ class PesertaProfilController extends Controller
 
         $isVerified = ($asesi->verifikasi === 'V') || $allWajibVerified;
 
+        $totalSkemaDiikuti = \App\Models\AsesiAsesmen::where('id_asesi', $asesi->no_pendaftaran)->count();
+        $hasPendaftaranPelatihan = $totalSkemaDiikuti > 0;
+
         return response()->json([
             'success' => true,
             'data' => [
                 'id' => $asesi->id,
                 'no_pendaftaran' => $asesi->no_pendaftaran,
+                'has_pendaftaran_pelatihan' => $hasPendaftaranPelatihan,
+                'total_skema_diikuti' => $totalSkemaDiikuti,
                 'no_ktp' => $asesi->no_ktp,
                 'nama' => $asesi->nama,
                 'tmp_lahir' => $asesi->tmp_lahir,
@@ -529,6 +537,125 @@ class PesertaProfilController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Terjadi kesalahan saat mengunggah sertifikat: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /api/v1/peserta/dokumen-persyaratan
+     * Upload single dokumen persyaratan (ijazah, sertifikat_amdal, bukti_keterlibatan, dokumen_amdal, cv, foto, ktp, dll.)
+     */
+    public function uploadDokumenPersyaratan(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user) {
+            return response()->json([
+                "success" => false,
+                "message" => "Sesi tidak valid.",
+            ], 401);
+        }
+
+        $asesi = Asesi::where("no_ktp", $user->no_ktp)
+            ->orWhere("no_pendaftaran", $user->username)
+            ->orWhere("no_pendaftaran", $user->no_induk)
+            ->orWhere("nohp", $user->no_telp)
+            ->first();
+
+        if (!$asesi) {
+            return response()->json([
+                "success" => false,
+                "message" => "Data peserta belum ditemukan. Lengkapi data profil terlebih dahulu.",
+            ], 404);
+        }
+
+        $key = $request->input("key");
+        $validKeys = [
+            "ijazah", "sertifikat_amdal", "bukti_keterlibatan", "dokumen_amdal",
+            "cv", "foto", "ktp", "sertifikat_kompetensi_lain", "form_pendaftaran", "sertifikat_atpa_ktpa"
+        ];
+
+        if (!in_array($key, $validKeys)) {
+            return response()->json([
+                "success" => false,
+                "message" => "Kategori dokumen tidak valid: {$key}",
+            ], 422);
+        }
+
+        if (!$request->hasFile("file")) {
+            return response()->json([
+                "success" => false,
+                "message" => "Berkas dokumen wajib dipilih.",
+            ], 422);
+        }
+
+        $uploaded = $request->file("file");
+        $validator = Validator::make(["file" => $uploaded], [
+            "file" => "file|mimes:jpg,jpeg,png,webp,pdf,doc,docx,zip,rar|max:10240",
+        ], [
+            "file.max" => "Ukuran berkas maksimal 10 MB.",
+            "file.mimes" => "Format berkas harus JPG, PNG, WEBP, PDF, DOC, DOCX, ZIP, atau RAR.",
+        ]);
+
+        if ($validator->fails()) {
+            $msg = collect($validator->errors()->all())->first() ?: "Berkas tidak valid.";
+            return response()->json([
+                "success" => false,
+                "message" => $msg,
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            $noPendaftaran = $asesi->no_pendaftaran;
+            $savedName = $noPendaftaran . "_" . $key . "." . $uploaded->getClientOriginalExtension();
+            $uploaded->storeAs("foto_asesi", $savedName, "public");
+
+            $asesi->{$key} = $savedName;
+
+            // Sync legacy fields
+            if ($key === 'sertifikat_kompetensi_lain') {
+                $asesi->transkrip = $savedName;
+            }
+            if ($key === 'sertifikat_amdal') {
+                $asesi->sertifikat = $savedName;
+            }
+            if ($key === 'bukti_keterlibatan') {
+                $asesi->suket = $savedName;
+            }
+
+            // Reset verifikasi_dokumen untuk file ini ke pending
+            $verif = is_array($asesi->verifikasi_dokumen)
+                ? $asesi->verifikasi_dokumen
+                : (json_decode($asesi->verifikasi_dokumen, true) ?: []);
+            $verif[$key] = "pending";
+            if ($key === 'sertifikat_kompetensi_lain') {
+                $verif['transkrip'] = "pending";
+            }
+            $asesi->verifikasi_dokumen = $verif;
+            $asesi->save();
+
+            if (in_array($key, ["foto", "ktp"])) {
+                $user->{$key} = $savedName;
+                $user->save();
+            }
+
+            DB::commit();
+
+            return response()->json([
+                "success" => true,
+                "message" => "Dokumen berhasil diunggah.",
+                "data" => [
+                    "key" => $key,
+                    "file" => $savedName,
+                    "file_url" => asset("storage/foto_asesi/" . $savedName),
+                    "status_verifikasi" => "pending",
+                ],
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                "success" => false,
+                "message" => "Gagal mengunggah dokumen: " . $e->getMessage(),
             ], 500);
         }
     }

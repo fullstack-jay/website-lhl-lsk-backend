@@ -220,8 +220,8 @@ class PengujiController extends Controller
             ],
             'penugasan_skema_count' => $penugasanSkemaCount,
 
-            // 8. Kolom aksi: Hapus hanya jika belum punya rekam jejak
-            'bisa_dihapus' => $totalPortofolio === 0,
+            // 8. Kolom aksi: Penguji dapat dihapus (Metode 2: snapshot nama penguji tetap disimpan di riwayat)
+            'bisa_dihapus' => true,
         ];
     }
 
@@ -560,8 +560,10 @@ class PengujiController extends Controller
     /**
      * DELETE /api/v1/admin/penguji/{id}
      *
-     * ✅ Server-side guard (perbaikan atas sistem lama yg hanya menyembunyikan tombol):
-     * delete ditolak jika penguji sudah punya penugasan jadwal (rekam jejak).
+     * Metode 2 (Hard Delete + Snapshot Nama Teks):
+     * Penguji dihapus fisik dari tabel asesor & users.
+     * Sebelum dihapus, nama lengkap, gelar & lisensi di-snapshot ke jadwal_asesor,
+     * penilaian_asesi, dan asesi_asesmen sehingga riwayat penilaian masa lalu tetap utuh.
      */
     public function destroy($id)
     {
@@ -573,26 +575,47 @@ class PengujiController extends Controller
             ], 404);
         }
 
-        $ikutAsesmen = DB::table('jadwal_asesor')->where('id_asesor', $id)->count();
-        if ($ikutAsesmen > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => "Penguji tidak dapat dihapus karena memiliki {$ikutAsesmen} penugasan jadwal asesmen",
-            ], 400);
-        }
-
-        // Bersihkan penugasan skema + akun login (users) lalu hapus record
         DB::beginTransaction();
         try {
+            $namaLengkap = trim($asesor->full_name ?: $asesor->nama);
+            $namaPlain = trim($asesor->nama);
+
+            // 1. Simpan snapshot di jadwal_asesor jika pernah ditugaskan
+            DB::table('jadwal_asesor')->where('id_asesor', $id)->update([
+                'nama_asesor' => $namaPlain,
+                'gelar_depan' => $asesor->gelar_depan,
+                'gelar_blk' => $asesor->gelar_blk,
+                'no_lisensi' => $asesor->no_lisensi,
+                'no_ktp' => $asesor->no_ktp,
+            ]);
+
+            // 2. Simpan snapshot di penilaian_asesi
+            DB::table('penilaian_asesi')->where('id_asesor', $id)->update([
+                'nama_asesor' => $namaLengkap,
+            ]);
+
+            // 3. Simpan snapshot di asesi_asesmen
+            DB::table('asesi_asesmen')->where('id_asesor', $id)->update([
+                'nama_asesor' => $namaLengkap,
+            ]);
+
+            // 4. Bersihkan penetapan penugasan skema penguji
             AsesorTugasskema::where('id_asesor', $id)->delete();
-            // Hapus juga akun di tabel users (level=penguji, username=no_ktp)
-            User::where('username', $asesor->no_ktp)->where('level', 'penguji')->delete();
+
+            // 5. Hapus akun di tabel users (level=penguji)
+            User::where(function ($q) use ($asesor) {
+                if ($asesor->no_ktp) $q->orWhere('username', $asesor->no_ktp);
+                if ($asesor->no_induk) $q->orWhere('username', $asesor->no_induk);
+            })->where('level', 'penguji')->delete();
+
+            // 6. Hapus permanen penguji dari tabel asesor
             $asesor->delete();
+
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Penguji berhasil dihapus',
+                'message' => 'Penguji berhasil dihapus dari database. Rekam jejak nama penguji tetap tersimpan pada riwayat asesmen.',
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

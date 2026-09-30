@@ -31,6 +31,7 @@ class PenilaianAsesi extends Model
         'id_asesmen',
         'no_pendaftaran',
         'id_asesor',
+        'nama_asesor',
         'nilai_vp',
         'nilai_pt',
         'nilai_dpsk',

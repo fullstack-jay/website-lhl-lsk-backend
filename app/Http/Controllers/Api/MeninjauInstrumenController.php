@@ -71,9 +71,15 @@ class MeninjauInstrumenController extends Controller
 
             // Tim asesor (jadwal_asesor — info pelengkap)
             $timPenguji = DB::table('jadwal_asesor as ja')
-                ->join('asesor as a', 'a.id', '=', 'ja.id_asesor')
+                ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
                 ->where('ja.id_jadwal', $j->id)
-                ->get(['a.id', 'a.nama', 'a.gelar_depan', 'a.gelar_blk'])
+                ->select([
+                    'ja.id_asesor as id',
+                    DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                    DB::raw("COALESCE(a.gelar_depan, ja.gelar_depan) as gelar_depan"),
+                    DB::raw("COALESCE(a.gelar_blk, ja.gelar_blk) as gelar_blk"),
+                ])
+                ->get()
                 ->map(fn ($a) => [
                     'id' => $a->id,
                     'nama_lengkap' => trim(($a->gelar_depan ? $a->gelar_depan . ' ' : '') . $a->nama . ($a->gelar_blk ? ', ' . $a->gelar_blk : '')),
@@ -236,9 +242,13 @@ class MeninjauInstrumenController extends Controller
 
         // Tim asesor + dok standar kompetensi (panel info bawah)
         $timPenguji = DB::table('jadwal_asesor as ja')
-            ->join('asesor as a', 'a.id', '=', 'ja.id_asesor')
+            ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
             ->where('ja.id_jadwal', $idJadwal)
-            ->get(['a.nama', 'a.no_induk'])
+            ->select([
+                DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                DB::raw("COALESCE(a.no_induk, ja.no_ktp, '') as no_induk"),
+            ])
+            ->get()
             ->map(fn ($a) => [
                 'nama' => $a->nama,
                 'no_induk' => $a->no_induk,
@@ -340,9 +350,13 @@ class MeninjauInstrumenController extends Controller
 
         // Tim asesor (untuk header form)
         $timPenguji = DB::table('jadwal_asesor as ja')
-            ->join('asesor as a', 'a.id', '=', 'ja.id_asesor')
+            ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
             ->where('ja.id_jadwal', $idJadwal)
-            ->get(['a.nama', 'a.no_induk'])
+            ->select([
+                DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                DB::raw("COALESCE(a.no_induk, ja.no_ktp, '') as no_induk"),
+            ])
+            ->get()
             ->map(fn ($a) => ['nama' => $a->nama, 'no_induk' => $a->no_induk]);
 
         return response()->json([

@@ -612,15 +612,17 @@ class JadwalAsesmenController extends Controller
             'pelaksanaan_uji' => $jadwal->pelaksanaan_uji,
             'pelaksanaan_uji_label' => $jadwal->pelaksanaan_uji_label,
             'dokumen_lengkap' => $jadwal->dokumen_lengkap,
-            'penguji' => $jadwal->asesor ? $jadwal->asesor->map(function ($asesor) {
-                return [
-                    'id' => $asesor->id,
-                    'nama' => $asesor->nama,
-                    'gelar_depan' => $asesor->gelar_depan,
-                    'gelar_blk' => $asesor->gelar_blk,
-                    'no_lisensi' => $asesor->no_lisensi,
-                ];
-            }) : [],
+            'penguji' => DB::table('jadwal_asesor as ja')
+                ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
+                ->where('ja.id_jadwal', $jadwal->id)
+                ->select([
+                    'ja.id_asesor as id',
+                    DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                    DB::raw("COALESCE(a.gelar_depan, ja.gelar_depan) as gelar_depan"),
+                    DB::raw("COALESCE(a.gelar_blk, ja.gelar_blk) as gelar_blk"),
+                    DB::raw("COALESCE(a.no_lisensi, ja.no_lisensi) as no_lisensi"),
+                ])
+                ->get(),
             'komite_teknis' => $jadwal->komiteTeknis ? $jadwal->komiteTeknis->map(function ($komite) {
                 return [
                     'id' => $komite->id,
@@ -709,15 +711,17 @@ class JadwalAsesmenController extends Controller
                 'dok_standarkompetensi_url' => $jadwal->dok_standarkompetensi ? asset('foto_dokskkni/' . $jadwal->dok_standarkompetensi) : null,
                 'kodejadwal_bnsp' => $jadwal->kodejadwal_bnsp,
                 'id_jadwalbnsp' => $jadwal->id_jadwalbnsp,
-                'asesor' => $jadwal->asesor->map(function ($asesor) {
-                    return [
-                        'id' => $asesor->id,
-                        'nama' => $asesor->nama,
-                        'gelar_depan' => $asesor->gelar_depan,
-                        'gelar_blk' => $asesor->gelar_blk,
-                        'no_lisensi' => $asesor->no_lisensi,
-                    ];
-                }),
+                'asesor' => DB::table('jadwal_asesor as ja')
+                    ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
+                    ->where('ja.id_jadwal', $jadwal->id)
+                    ->select([
+                        'ja.id_asesor as id',
+                        DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                        DB::raw("COALESCE(a.gelar_depan, ja.gelar_depan) as gelar_depan"),
+                        DB::raw("COALESCE(a.gelar_blk, ja.gelar_blk) as gelar_blk"),
+                        DB::raw("COALESCE(a.no_lisensi, ja.no_lisensi) as no_lisensi"),
+                    ])
+                    ->get(),
                 'komite' => $jadwal->komite->map(function ($komite) {
                     return [
                         'id' => $komite->id,
@@ -1055,9 +1059,15 @@ class JadwalAsesmenController extends Controller
             ], 400);
         }
 
+        $asesorModel = Asesor::find($request->id_asesor);
         \DB::table('jadwal_asesor')->insert([
             'id_jadwal' => $id,
             'id_asesor' => $request->id_asesor,
+            'nama_asesor' => $asesorModel ? $asesorModel->nama : null,
+            'gelar_depan' => $asesorModel ? $asesorModel->gelar_depan : null,
+            'gelar_blk' => $asesorModel ? $asesorModel->gelar_blk : null,
+            'no_lisensi' => $asesorModel ? $asesorModel->no_lisensi : null,
+            'no_ktp' => $asesorModel ? $asesorModel->no_ktp : null,
         ]);
 
         return response()->json([

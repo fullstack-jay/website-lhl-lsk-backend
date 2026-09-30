@@ -68,9 +68,15 @@ class VerifikasiTukPengujiController extends Controller
 
             // Tim asesor penguji (jadwal_asesor × asesor)
             $timPenguji = DB::table('jadwal_asesor as ja')
-                ->join('asesor as a', 'a.id', '=', 'ja.id_asesor')
+                ->leftJoin('asesor as a', 'a.id', '=', 'ja.id_asesor')
                 ->where('ja.id_jadwal', $v->id_jadwal)
-                ->get(['a.id', 'a.nama', 'a.gelar_depan', 'a.gelar_blk'])
+                ->select([
+                    'ja.id_asesor as id',
+                    DB::raw("COALESCE(NULLIF(TRIM(a.nama), ''), NULLIF(TRIM(ja.nama_asesor), ''), 'Penguji LSK') as nama"),
+                    DB::raw("COALESCE(a.gelar_depan, ja.gelar_depan) as gelar_depan"),
+                    DB::raw("COALESCE(a.gelar_blk, ja.gelar_blk) as gelar_blk"),
+                ])
+                ->get()
                 ->map(fn ($a) => [
                     'id' => $a->id,
                     'nama_lengkap' => trim(($a->gelar_depan ? $a->gelar_depan . ' ' : '') . $a->nama . ($a->gelar_blk ? ', ' . $a->gelar_blk : '')),

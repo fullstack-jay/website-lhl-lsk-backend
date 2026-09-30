@@ -91,9 +91,10 @@ class KomiteHasilAsesmenController extends Controller
 
             // Asesor ditugaskan
             $asesorNames = DB::table('jadwal_asesor')
-                ->join('asesor', 'jadwal_asesor.id_asesor', '=', 'asesor.id')
+                ->leftJoin('asesor', 'jadwal_asesor.id_asesor', '=', 'asesor.id')
                 ->where('jadwal_asesor.id_jadwal', $j->id)
-                ->pluck('asesor.nama')
+                ->select(DB::raw("COALESCE(NULLIF(TRIM(asesor.nama), ''), NULLIF(TRIM(jadwal_asesor.nama_asesor), ''), 'Penguji LSK') as nama"))
+                ->pluck('nama')
                 ->toArray();
 
             if (empty($asesorNames)) {
@@ -283,13 +284,13 @@ class KomiteHasilAsesmenController extends Controller
 
         // Asesor yang ditugaskan per jadwal untuk fallback jika penilaian belum menentukan asesor spesifik
         $jadwalAsesors = DB::table('jadwal_asesor')
-            ->join('asesor', 'jadwal_asesor.id_asesor', '=', 'asesor.id')
+            ->leftJoin('asesor', 'jadwal_asesor.id_asesor', '=', 'asesor.id')
             ->select([
                 'jadwal_asesor.id_jadwal',
-                'asesor.id as id_asesor',
-                'asesor.nama',
-                'asesor.gelar_depan',
-                'asesor.gelar_blk',
+                'jadwal_asesor.id_asesor as id_asesor',
+                DB::raw("COALESCE(NULLIF(TRIM(asesor.nama), ''), NULLIF(TRIM(jadwal_asesor.nama_asesor), ''), 'Penguji LSK') as nama"),
+                DB::raw("COALESCE(asesor.gelar_depan, jadwal_asesor.gelar_depan) as gelar_depan"),
+                DB::raw("COALESCE(asesor.gelar_blk, jadwal_asesor.gelar_blk) as gelar_blk"),
             ])
             ->get()
             ->groupBy('id_jadwal');

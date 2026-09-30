@@ -198,6 +198,7 @@ class PenilaianAsesiController extends Controller
                 [
                     'id_asesmen' => $asesiAsesmen->id,
                     'id_asesor' => $idAsesor,
+                    'nama_asesor' => $asesor ? ($asesor->full_name ?: $asesor->nama) : null,
                     'nilai_vp' => $hasil['nilai_vp'],
                     'nilai_pt' => $hasil['nilai_pt'],
                     'nilai_dpsk' => $hasil['nilai_dpsk'],
@@ -220,6 +221,7 @@ class PenilaianAsesiController extends Controller
             $asesiAsesmen->update([
                 'status_asesmen' => 'P',
                 'id_asesor' => $idAsesor,
+                'nama_asesor' => $asesor ? ($asesor->full_name ?: $asesor->nama) : null,
                 'tgl_asesmen' => now()->toDateString(),
                 'catatan_asesmen' => $validated['catatan'] ?? null,
             ]);

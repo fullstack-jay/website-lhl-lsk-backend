@@ -27,6 +27,7 @@ class AsesiAsesmen extends Model
         'biaya',
         'id_jadwal',
         'id_asesor',
+        'nama_asesor',
         'peninjau_ia11',
         'tgl_asesmen',
         'status',

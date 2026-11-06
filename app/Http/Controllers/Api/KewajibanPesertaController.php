@@ -123,6 +123,31 @@ class KewajibanPesertaController extends Controller
             } else {
                 $approvedYearsMap[$tahunInt] = false;
 
+                // Hirarki 1 & 2: Cek apakah ada kegiatan PKB yang waktunya <= batas akhir periode (atau di bawah periode awal)
+                $hasValidPkb = false;
+                $pkbRows = DB::table('asesi_pemeliharaan_pkb')->where('id_pemeliharaan', $p->id)->get();
+                if ($pkbRows->count() > 0) {
+                    foreach ($pkbRows as $pkbRow) {
+                        if (!empty($pkbRow->waktu)) {
+                            try {
+                                $rowWaktu = \Carbon\Carbon::parse($pkbRow->waktu)->startOfDay();
+                                if ($rowWaktu->lte($tempoCarbon)) {
+                                    $hasValidPkb = true;
+                                    break;
+                                }
+                            } catch (\Throwable $th) {
+                                $hasValidPkb = true;
+                                break;
+                            }
+                        } else {
+                            $hasValidPkb = true;
+                            break;
+                        }
+                    }
+                } elseif ($p->status_pkb === 'TERISI' || $p->status_pkb === 'REVISI_TERKIRIM') {
+                    $hasValidPkb = true;
+                }
+
                 if ($periode['tahun_ke'] > 1) {
                     $prevTahun = $tahunInt - 1;
                     $isPrevApproved = !empty($approvedYearsMap[$prevTahun]);
@@ -130,7 +155,7 @@ class KewajibanPesertaController extends Controller
 
                     if ($isPrevApproved) {
                         // Tahun sebelumnya sudah di-ACC: tahun ini terbuka untuk pengajuan pemeliharaan
-                        $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, null);
+                        $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, null, $hasValidPkb);
                         $derivedStatus = $derived['status'];
                         $bisaUpload = $derived['bisa_upload'];
                         $pesanKunci = null;
@@ -142,7 +167,7 @@ class KewajibanPesertaController extends Controller
                     }
                 } else {
                     // Tahun Pertama
-                    $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, $mulaiCarbon);
+                    $derived = $this->deriveStatusWithDates($p->status, $tempoCarbon, false, $adaFile, $mulaiCarbon, $hasValidPkb);
                     $derivedStatus = $derived['status'];
                     $bisaUpload = $derived['bisa_upload'];
                 }
@@ -219,8 +244,12 @@ class KewajibanPesertaController extends Controller
             })->all();
 
         // ── Summary cards (derivasi §5) ──
-        // Periode berjalan saat ini (rentang tanggal_mulai <= hari ini <= tanggal_jatuh_tempo)
-        $currentPem = collect($processedPemeliharaan)->first(function ($item) use ($today) {
+        // Prioritaskan pemeliharaan yang sedang berjalan / tertunda (belum DISETUJUI dan dapat dikerjakan, bukan BELUM_WAKTUNYA)
+        $pendingPem = collect($processedPemeliharaan)->first(function ($item) {
+            return !in_array($item['status'], ['DISETUJUI', 'BELUM_WAKTUNYA']);
+        });
+
+        $currentPem = $pendingPem ?? collect($processedPemeliharaan)->first(function ($item) use ($today) {
             $mulai = \Carbon\Carbon::parse($item['tanggal_mulai'])->startOfDay();
             $tempo = \Carbon\Carbon::parse($item['tanggal_jatuh_tempo'])->startOfDay();
             return $item['status'] !== 'DISETUJUI' && $today->gte($mulai) && $today->lte($tempo);
@@ -536,18 +565,22 @@ class KewajibanPesertaController extends Controller
                 'status' => 'SUDAH_UPLOAD',
                 'tanggal_upload' => now(),
             ];
+            $userFolder = $this->getUserFolderName($asesi, $request->user());
+            [$relativeSubdir, $dest] = $this->getStorageTarget($userFolder, 'Pemeliharaan Tahunan');
+
             foreach (['file_penunjukan', 'file_logbook', 'file_cover_tim', 'file_ka_andal'] as $field) {
                 if ($request->hasFile($field)) {
                     $file = $request->file($field);
                     $fileName = time() . '_pmlh_' . $tahun . '_' . $field . '_' . uniqid() . '.' .
                         strtolower($file->getClientOriginalExtension());
-                    $dest = public_path(self::dir());
-                    if (!file_exists($dest)) mkdir($dest, 0755, true);
+                    $relativePath = $relativeSubdir . '/' . $fileName;
                     // Timpa file lama (revisi)
-                    $old = public_path(self::dir() . '/' . $record->{$field});
-                    if (!empty($record->{$field}) && file_exists($old)) @unlink($old);
+                    if (!empty($record->{$field})) {
+                        $old = public_path(self::dir() . '/' . $record->{$field});
+                        if (file_exists($old)) @unlink($old);
+                    }
                     $file->move($dest, $fileName);
-                    $updates[$field] = $fileName;
+                    $updates[$field] = $relativePath;
                 }
             }
 
@@ -677,15 +710,19 @@ class KewajibanPesertaController extends Controller
                 } catch (\Throwable $e) {}
             }
 
-            if ($waktuParsed && $waktuParsed->lt($mulaiCarbon)) {
-                $tglMulaiIndo = $this->formatTanggalIndo($periode['tanggal_mulai']);
-                $prevLabel = $periode['tahun_ke'] > 1 ? $this->calculatePeriodePemeliharaan($tglTerbit, (int) $tahun - 1)['tahun_ke_label'] : 'periode sebelumnya';
+            // Hirarki 1: Waktu pelaksanaan tidak boleh melewati batas akhir periode (tanggal_jatuh_tempo)
+            // Hirarki 2: Waktu pelaksanaan di bawah/sebelum batas awal periode (< tanggal_mulai) tetap sah dan tidak terlambat
+            if ($waktuParsed && $waktuParsed->gt($tempoCarbon)) {
+                $tglTempoIndo = $this->formatTanggalIndo($periode['tanggal_jatuh_tempo']);
                 return response()->json([
                     'success' => false,
-                    'message' => "Baris " . ($i + 1) . " ({$row['tema']}): Tanggal pelaksanaan ({$this->formatTanggalIndo($row['waktu'])}) tidak valid. Kegiatan untuk {$periode['tahun_ke_label']} harus dilaksanakan mulai tanggal {$tglMulaiIndo} (setelah periode {$prevLabel} selesai).",
+                    'message' => "Baris " . ($i + 1) . " ({$row['tema']}): Tanggal pelaksanaan ({$this->formatTanggalIndo($row['waktu'])}) melewati batas akhir periode pemeliharaan ({$tglTempoIndo}).",
                 ], 422);
             }
         }
+
+        $userFolder = $this->getUserFolderName($asesi, $request->user());
+        [$relativeSubdir, $dest] = $this->getStorageTarget($userFolder, 'Arsip Pemeliharaan PKB');
 
         DB::beginTransaction();
         try {
@@ -693,15 +730,14 @@ class KewajibanPesertaController extends Controller
             DB::table('asesi_pemeliharaan_pkb')->where('id_pemeliharaan', $record->id)->delete();
 
             foreach ($rows as $i => $row) {
-                $fileName = null;
+                $filePath = null;
                 if ($request->hasFile("files.{$i}") || $request->hasFile("files_{$i}")) {
                     $file = $request->hasFile("files.{$i}")
                         ? $request->file("files.{$i}")
                         : $request->file("files_{$i}");
                     $fileName = time() . '_pkb_' . uniqid() . '.' . strtolower($file->getClientOriginalExtension());
-                    $dest = public_path(self::dir());
-                    if (!file_exists($dest)) mkdir($dest, 0755, true);
                     $file->move($dest, $fileName);
+                    $filePath = $relativeSubdir . '/' . $fileName;
                 }
 
                 $waktuVal = now()->toDateString();
@@ -715,6 +751,19 @@ class KewajibanPesertaController extends Controller
                     }
                 }
 
+                $existingFile = null;
+                if (!empty($row['file_bukti']) && str_contains($row['file_bukti'], '/')) {
+                    $existingFile = (string) $row['file_bukti'];
+                } elseif (!empty($row['dokumen_bukti']) && str_contains($row['dokumen_bukti'], '/')) {
+                    $existingFile = (string) $row['dokumen_bukti'];
+                } else {
+                    $existingFile = $row['file_bukti'] ?? $row['dokumen_bukti'] ?? null;
+                }
+                if ($existingFile && str_contains($existingFile, 'foto_kewajiban/')) {
+                    $parts = explode('foto_kewajiban/', $existingFile);
+                    $existingFile = urldecode(end($parts));
+                }
+
                 DB::table('asesi_pemeliharaan_pkb')->insert([
                     'id_pemeliharaan' => $record->id,
                     'bentuk_kegiatan' => $row['bentuk_kegiatan'],
@@ -724,7 +773,7 @@ class KewajibanPesertaController extends Controller
                     'lokasi' => $row['lokasi'],
                     'waktu' => $waktuVal,
                     'deskripsi_singkat' => $row['deskripsi_singkat'] ?? null,
-                    'file_bukti' => $fileName ?: ($row['dokumen_bukti'] ?? null),
+                    'file_bukti' => $filePath ?: $existingFile,
                 ]);
             }
 
@@ -736,6 +785,10 @@ class KewajibanPesertaController extends Controller
                 $updatePkb['status_pkb'] = 'REVISI_TERKIRIM';
             } elseif (empty($record->status_pkb) || $record->status_pkb === 'BELUM') {
                 $updatePkb['status_pkb'] = 'TERISI';
+            }
+            if ($record->status === 'TERLAMBAT') {
+                $adaFile = !empty($record->file_surat_tugas_lpjp);
+                $updatePkb['status'] = $adaFile ? 'SUDAH_UPLOAD' : 'BELUM';
             }
             if (!empty($updatePkb)) {
                 DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updatePkb);
@@ -843,17 +896,21 @@ class KewajibanPesertaController extends Controller
 
         DB::beginTransaction();
         try {
+            $userFolder = $this->getUserFolderName($asesi, $request->user());
+            [$relativeSubdir, $dest] = $this->getStorageTarget($userFolder, 'Evaluasi 3 Tahunan');
+
             $file = $request->file('file_dokumen');
             $fileName = time() . '_eval_' . $tahunKe . '_' . uniqid() . '.pdf';
-            $dest = public_path(self::dir());
-            if (!file_exists($dest)) mkdir($dest, 0755, true);
-            $old = public_path(self::dir() . '/' . $record->file_dokumen);
-            if (!empty($record->file_dokumen) && file_exists($old)) @unlink($old);
+            $relativePath = $relativeSubdir . '/' . $fileName;
+            if (!empty($record->file_dokumen)) {
+                $old = public_path(self::dir() . '/' . $record->file_dokumen);
+                if (file_exists($old)) @unlink($old);
+            }
             $file->move($dest, $fileName);
 
             DB::table('asesi_evaluasi')->where('id', $record->id)->update([
                 'jenis_dokumen' => $request->jenis_dokumen,
-                'file_dokumen' => $fileName,
+                'file_dokumen' => $relativePath,
                 'status' => 'SUDAH_UPLOAD',
                 'tanggal_upload' => now(),
             ]);
@@ -1040,18 +1097,49 @@ class KewajibanPesertaController extends Controller
                             ], 422);
                         }
                         $fileName = time() . '_logbook_' . uniqid() . '.pdf';
-                        $dest = public_path(self::dir());
-                        if (!file_exists($dest)) mkdir($dest, 0755, true);
-                        // edit: file baru menggantikan file lama → jadwalkan hapus setelah commit
-                        if ($existing && !empty($existing->{$bf}) && $existing->{$bf} !== $fileName) {
+                        $file->move($dest, $fileName);
+                        $relativePath = $relativeSubdir . '/' . $fileName;
+
+                        if ($existing && !empty($existing->{$bf}) && $existing->{$bf} !== $relativePath) {
                             $filesToDelete[] = $existing->{$bf};
                         }
-                        $file->move($dest, $fileName);
-                        $buktiData[$bf] = $fileName;
+                        $buktiData[$bf] = $relativePath;
+                    } elseif ($existing && !empty($existing->{$bf})) {
+                        $buktiData[$bf] = $existing->{$bf};
                     } elseif (!empty($row[$bf])) {
-                        $buktiData[$bf] = basename((string) $row[$bf]);
+                        $val = (string) $row[$bf];
+                        if (str_contains($val, 'foto_kewajiban/')) {
+                            $parts = explode('foto_kewajiban/', $val);
+                            $buktiData[$bf] = urldecode(end($parts));
+                        } else {
+                            $buktiData[$bf] = $val;
+                        }
                     } else {
                         $buktiData[$bf] = null;
+                    }
+                }
+
+                // Surat Penunjukan Tim cukup 1 kali upload di Dokumen ke-1:
+                if ($i === 0 && !empty($buktiData['file_surat_tugas_lpjp'])) {
+                    $dokumen1SuratPenunjukan = $buktiData['file_surat_tugas_lpjp'];
+                } elseif ($i > 0) {
+                    if (empty($buktiData['file_surat_tugas_lpjp']) && !empty($dokumen1SuratPenunjukan)) {
+                        $buktiData['file_surat_tugas_lpjp'] = $dokumen1SuratPenunjukan;
+                    }
+                }
+
+                // Fallback: Jika belum ada surat penunjukan tim, cari dari Dokumen ke-1 tahun ini di database
+                if (empty($buktiData['file_surat_tugas_lpjp'])) {
+                    $firstExisting = DB::table('asesi_logbook')
+                        ->where('id_asesi', $asesi->no_pendaftaran)
+                        ->where('tahun', (int) $row['tahun'])
+                        ->whereNotNull('file_surat_tugas_lpjp')
+                        ->where('file_surat_tugas_lpjp', '!=', '')
+                        ->orderBy('id', 'asc')
+                        ->first();
+                    if ($firstExisting && !empty($firstExisting->file_surat_tugas_lpjp)) {
+                        $dokumen1SuratPenunjukan = $firstExisting->file_surat_tugas_lpjp;
+                        $buktiData['file_surat_tugas_lpjp'] = $dokumen1SuratPenunjukan;
                     }
                 }
 
@@ -1158,15 +1246,26 @@ class KewajibanPesertaController extends Controller
 
         DB::table('asesi_logbook')->where('id', $row->id)->delete();
 
-        // Bersihkan 3 file bukti milik baris ini
+        // Bersihkan 3 file bukti milik baris ini (jika tidak dipakai row lain)
         foreach (array_filter([
             $row->file_surat_tugas_lpjp,
             $row->file_referensi_pemrakarsa,
             $row->file_ba_persetujuan_kpa,
         ]) as $f) {
-            $abs = public_path(self::dir() . '/' . $f);
-            if (file_exists($abs)) {
-                @unlink($abs);
+            $isUsedByOther = DB::table('asesi_logbook')
+                ->where('id_asesi', $asesi->no_pendaftaran)
+                ->where('id', '!=', $row->id)
+                ->where(function ($q) use ($f) {
+                    $q->where('file_surat_tugas_lpjp', $f)
+                      ->orWhere('file_referensi_pemrakarsa', $f)
+                      ->orWhere('file_ba_persetujuan_kpa', $f);
+                })
+                ->exists();
+            if (!$isUsedByOther) {
+                $abs = public_path(self::dir() . '/' . $f);
+                if (file_exists($abs)) {
+                    @unlink($abs);
+                }
             }
         }
 
@@ -1243,6 +1342,35 @@ class KewajibanPesertaController extends Controller
     // ════════════════════════════════════════════════════════════════
     // HELPERS
     // ════════════════════════════════════════════════════════════════
+
+    /**
+     * Resolve nama folder user yang bersih untuk direktori VPS.
+     * Contoh: "Rizqi Reza Ardiansyah" atau "Enstya Utama Harahap"
+     */
+    private function getUserFolderName($asesi, $user = null): string
+    {
+        $rawName = trim((string) ($asesi->nama ?? ($user?->nama_lengkap ?? '')));
+        $clean = preg_replace('[/\\:*?"<>|]', '', $rawName);
+        $clean = trim(preg_replace('/\s+/', ' ', $clean));
+        if (empty($clean)) {
+            $clean = 'Peserta_' . ($asesi->no_pendaftaran ?? 'User');
+        }
+        return $clean;
+    }
+
+    /**
+     * Resolve target penyimpanan terstruktur per user dan tab menu.
+     * Output: [$relativeSubdir, $fullDir]
+     */
+    private function getStorageTarget(string $userFolder, string $tabMenu): array
+    {
+        $relativeSubdir = $userFolder . '/' . $tabMenu;
+        $fullDir = public_path(self::dir() . '/' . $relativeSubdir);
+        if (!file_exists($fullDir)) {
+            mkdir($fullDir, 0755, true);
+        }
+        return [$relativeSubdir, $fullDir];
+    }
 
     private function dir(): string
     {
@@ -1430,7 +1558,7 @@ class KewajibanPesertaController extends Controller
      * Derive status dengan tanggal Carbon akurat (tempo & mulai).
      * Return ['status' => ..., 'bisa_upload' => bool]
      */
-    private function deriveStatusWithDates($storedStatus, \Carbon\Carbon $tempo, bool $isEvaluasi, bool $adaFile, ?\Carbon\Carbon $mulai = null): array
+    private function deriveStatusWithDates($storedStatus, \Carbon\Carbon $tempo, bool $isEvaluasi, bool $adaFile, ?\Carbon\Carbon $mulai = null, bool $hasValidPkb = false): array
     {
         $today = now()->startOfDay();
 
@@ -1460,12 +1588,19 @@ class KewajibanPesertaController extends Controller
         }
 
         // 6. Lewat tempo & belum DISETUJUI -> TERLAMBAT (override)
+        // KECUALI jika peserta sudah mengisi PKB tepat waktu (Hirarki 1: waktu <= tempo, Hirarki 2: waktu < mulai)
         if ($today->gt($tempo)) {
             if ($storedStatus === 'DITOLAK') {
                 return ['status' => 'DITOLAK', 'bisa_upload' => false];
             }
             if ($storedStatus === 'DALAM_EVALUASI') {
                 return ['status' => 'DALAM_EVALUASI', 'bisa_upload' => false];
+            }
+            if ($hasValidPkb) {
+                return [
+                    'status' => $adaFile ? 'SUDAH_UPLOAD' : ($isEvaluasi ? 'BELUM_UPLOAD' : 'BELUM'),
+                    'bisa_upload' => true,
+                ];
             }
             return ['status' => 'TERLAMBAT', 'bisa_upload' => true];
         }

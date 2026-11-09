@@ -53,6 +53,12 @@ class AdminKewajibanPesertaController extends Controller
             ->get()
             ->keyBy('id_asesi');
 
+        // Ambil semua pemeliharaan per asesi (lintas tahun) untuk mendeteksi status pengajuan & acc
+        $allPemeliharaanGrouped = DB::table('asesi_pemeliharaan')
+            ->orderBy('tahun', 'desc')
+            ->get()
+            ->groupBy('id_asesi');
+
         // Ambil counter PKB per pemeliharaan
         $pkbCounts = DB::table('asesi_pemeliharaan_pkb')
             ->select('id_pemeliharaan', DB::raw('count(*) as total'))
@@ -89,8 +95,59 @@ class AdminKewajibanPesertaController extends Controller
                 'SUDAH_UPLOAD' => 'Menunggu Verifikasi',
                 'PERLU_PERBAIKAN' => 'Perlu Perbaikan',
                 'DITOLAK' => 'Ditolak',
+                'BELUM_WAKTUNYA' => 'Belum Waktunya',
+                'TERLAMBAT' => 'Terlambat',
                 default => 'Belum Upload',
             };
+
+            $asesiPems = $allPemeliharaanGrouped->get($asesi->no_pendaftaran, collect());
+
+            // Deteksi kewajiban yang disetujui (lintas tahun, prioritaskan tahun terdekat/tertinggi)
+            $approvedPem = $asesiPems->first(function ($p) {
+                return $p->status === 'DISETUJUI' || (isset($p->status_pkb) && $p->status_pkb === 'DISETUJUI');
+            });
+
+            // Deteksi kewajiban yang pending verifikasi atau terisi berkasnya (lintas tahun)
+            $pendingPem = $asesiPems->first(function ($p) use ($pkbCounts) {
+                $hasPkb = isset($pkbCounts[$p->id]) && $pkbCounts[$p->id] > 0;
+                return in_array($p->status, ['SUDAH_UPLOAD', 'PERLU_PERBAIKAN'])
+                    || in_array($p->status_pkb ?? '', ['SUDAH_UPLOAD', 'PERLU_PERBAIKAN', 'TERISI'])
+                    || ($hasPkb && $p->status !== 'DISETUJUI' && ($p->status_pkb ?? '') !== 'DISETUJUI');
+            });
+
+            // Deteksi kewajiban yang memiliki kegiatan PKB tercatat
+            $pemWithPkb = $asesiPems->first(function ($p) use ($pkbCounts) {
+                return isset($pkbCounts[$p->id]) && $pkbCounts[$p->id] > 0;
+            });
+
+            $approvedVerifiedBy = null;
+            $approvedVerifiedAt = null;
+            if ($approvedPem) {
+                if ($approvedPem->catatan_evaluator && preg_match('/Disahkan & di-ACC oleh ([^(]+)/', $approvedPem->catatan_evaluator, $m)) {
+                    $approvedVerifiedBy = trim($m[1]);
+                } else {
+                    $approvedVerifiedBy = 'admin_sindi';
+                }
+                if ($approvedPem->tanggal_evaluasi) {
+                    $approvedVerifiedAt = date('Y-m-d H:i', strtotime($approvedPem->tanggal_evaluasi));
+                } elseif (isset($approvedPem->tgl_ttd_rusdani) && $approvedPem->tgl_ttd_rusdani) {
+                    $approvedVerifiedAt = date('Y-m-d H:i', strtotime($approvedPem->tgl_ttd_rusdani));
+                }
+            }
+
+            // Deteksi tahun kewajiban aktif asesi (yang belum disetujui dan bukan belum waktunya)
+            $activePemRow = DB::table('asesi_pemeliharaan')
+                ->where('id_asesi', $asesi->no_pendaftaran)
+                ->whereNotIn('status', ['DISETUJUI', 'BELUM_WAKTUNYA'])
+                ->orderBy('tahun', 'asc')
+                ->first();
+            $kewajibanAktifTahun = $activePemRow ? (int) $activePemRow->tahun : null;
+            $kewajibanAktifPkbCount = 0;
+            if ($activePemRow) {
+                $kewajibanAktifPkbCount = (int) DB::table('asesi_pemeliharaan_pkb')
+                    ->where('id_pemeliharaan', $activePemRow->id)
+                    ->count();
+            }
 
             $filePenunjukan = $pem ? $pem->file_penunjukan : null;
             $fileLogbook = $pem ? $pem->file_logbook : null;
@@ -119,6 +176,8 @@ class AdminKewajibanPesertaController extends Controller
                 'tahun_ke_label' => $periode['tahun_ke_label'],
                 'status_pemeliharaan' => $pemStatus,
                 'status_pemeliharaan_label' => $statusLabel,
+                'status_pkb' => ($pem && isset($pem->status_pkb)) ? $pem->status_pkb : 'BELUM',
+                'status_logbook' => ($pem && isset($pem->status_logbook)) ? $pem->status_logbook : ($pem ? $pem->status : 'BELUM'),
                 'tanggal_mulai' => $periode['tanggal_mulai'],
                 'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
                 'tanggal_upload_pemeliharaan' => $pem && $pem->tanggal_upload ? date('Y-m-d H:i', strtotime($pem->tanggal_upload)) : null,
@@ -132,20 +191,43 @@ class AdminKewajibanPesertaController extends Controller
                     'link_dokumen_lengkap' => $linkDokumenLengkap,
                 ],
 
+                'verified_by' => $pem && $pem->catatan_evaluator && preg_match('/Disahkan & di-ACC oleh ([^(]+)/', $pem->catatan_evaluator, $m) ? trim($m[1]) : ($pem && ($pem->status === 'DISETUJUI' || (isset($pem->status_pkb) && $pem->status_pkb === 'DISETUJUI')) ? 'admin_sindi' : ($approvedVerifiedBy ?: null)),
+                'verified_role' => 'Administrator',
+                'verified_at' => $pem && isset($pem->tanggal_evaluasi) && $pem->tanggal_evaluasi ? date('Y-m-d H:i', strtotime($pem->tanggal_evaluasi)) : ($pem && isset($pem->tgl_ttd_rusdani) && $pem->tgl_ttd_rusdani ? date('Y-m-d H:i', strtotime($pem->tgl_ttd_rusdani)) : ($approvedVerifiedAt ?: null)),
+
                 'jumlah_pkb' => $pemId && isset($pkbCounts[$pemId]) ? (int) $pkbCounts[$pemId] : 0,
                 'jumlah_logbook' => isset($logbookCounts[$asesi->no_pendaftaran]) ? (int) $logbookCounts[$asesi->no_pendaftaran] : 0,
                 'evaluasi_tercatat' => isset($evaluasiAsesiIds[$asesi->no_pendaftaran]),
+                'kewajiban_aktif_tahun' => $kewajibanAktifTahun,
+                'kewajiban_aktif_pkb_count' => $kewajibanAktifPkbCount,
+
+                'has_approved_kewajiban' => $approvedPem !== null,
+                'approved_kewajiban_tahun' => $approvedPem ? (int) $approvedPem->tahun : null,
+                'approved_verified_by' => $approvedVerifiedBy,
+                'approved_verified_role' => 'Administrator',
+                'approved_verified_at' => $approvedVerifiedAt,
+                'approved_jumlah_pkb' => $approvedPem && isset($pkbCounts[$approvedPem->id]) ? (int) $pkbCounts[$approvedPem->id] : 0,
+
+                'has_pending_kewajiban' => $pendingPem !== null,
+                'pending_kewajiban_tahun' => $pendingPem ? (int) $pendingPem->tahun : null,
+                'kewajiban_terisi_tahun' => $pemWithPkb ? (int) $pemWithPkb->tahun : null,
             ];
         }
 
         // Statistik
         $allPem = DB::table('asesi_pemeliharaan')->where('tahun', $tahun)->get();
+        $totalDisetujuiLintasTahun = DB::table('asesi_pemeliharaan')
+            ->where('status', 'DISETUJUI')
+            ->orWhere('status_pkb', 'DISETUJUI')
+            ->distinct('id_asesi')
+            ->count('id_asesi');
+
         $stats = [
             'total_peserta' => count($allAsesi),
             'menunggu_verifikasi' => $allPem->where('status', 'SUDAH_UPLOAD')->count(),
-            'disetujui' => $allPem->where('status', 'DISETUJUI')->count(),
+            'disetujui' => max($allPem->where('status', 'DISETUJUI')->count(), $totalDisetujuiLintasTahun),
             'perlu_perbaikan' => $allPem->where('status', 'PERLU_PERBAIKAN')->count(),
-            'belum_upload' => max(0, count($allAsesi) - $allPem->whereIn('status', ['SUDAH_UPLOAD', 'DISETUJUI', 'PERLU_PERBAIKAN', 'DITOLAK'])->count()),
+            'belum_upload' => $allPem->whereIn('status', ['BELUM', 'TERLAMBAT'])->count(),
         ];
 
         $page = max(1, (int) ($request->query('page') ?: 1));
@@ -285,9 +367,33 @@ class AdminKewajibanPesertaController extends Controller
 
         $periode = $this->calculatePeriodePemeliharaan($asesi->tgl_sertifikat, $tahun);
 
+        // Riwayat semua tahun pemeliharaan asesi
+        $riwayatTahun = DB::table('asesi_pemeliharaan')
+            ->where('id_asesi', $asesi->no_pendaftaran)
+            ->orderBy('tahun', 'asc')
+            ->get()
+            ->map(function ($p) use ($asesi) {
+                $pkbCount = DB::table('asesi_pemeliharaan_pkb')->where('id_pemeliharaan', $p->id)->count();
+                $pPeriode = $this->calculatePeriodePemeliharaan($asesi->tgl_sertifikat, (int) $p->tahun);
+                return [
+                    'id' => $p->id,
+                    'tahun' => (int) $p->tahun,
+                    'tahun_ke' => $pPeriode['tahun_ke'],
+                    'tahun_ke_label' => $pPeriode['tahun_ke_label'],
+                    'status' => $p->status,
+                    'status_pkb' => (isset($p->status_pkb) && $p->status_pkb) ? $p->status_pkb : $p->status,
+                    'status_logbook' => (isset($p->status_logbook) && $p->status_logbook) ? $p->status_logbook : $p->status,
+                    'tanggal_upload' => $p->tanggal_upload,
+                    'pkb_count' => $pkbCount,
+                    'periode_mulai' => $pPeriode['tanggal_mulai'],
+                    'periode_selesai' => $pPeriode['tanggal_jatuh_tempo'],
+                ];
+            });
+
         return response()->json([
             'success' => true,
             'data' => [
+                'riwayat_tahun' => $riwayatTahun,
                 'peserta' => [
                     'id' => $asesi->id,
                     'no_pendaftaran' => $asesi->no_pendaftaran,
@@ -317,6 +423,9 @@ class AdminKewajibanPesertaController extends Controller
                         'ka_andal' => $pem ? $pem->file_ka_andal : null,
                         'link_dokumen_lengkap' => $pem && isset($pem->link_dokumen_lengkap) ? $pem->link_dokumen_lengkap : null,
                     ],
+                    'verified_by' => $pem && $pem->catatan_evaluator && preg_match('/Disahkan & di-ACC oleh ([^(]+)/', $pem->catatan_evaluator, $m) ? trim($m[1]) : ($pem && ($pem->status_pkb === 'DISETUJUI' || $pem->status === 'DISETUJUI') ? 'admin_sindi' : null),
+                    'verified_role' => 'Administrator',
+                    'verified_at' => $pem && isset($pem->tanggal_evaluasi) && $pem->tanggal_evaluasi ? date('Y-m-d H:i', strtotime($pem->tanggal_evaluasi)) : ($pem && isset($pem->tgl_ttd_rusdani) && $pem->tgl_ttd_rusdani ? date('Y-m-d H:i', strtotime($pem->tgl_ttd_rusdani)) : null),
                 ],
                 'pkb_rows' => $pkbRows,
                 'logbook_rows' => $logbookRows,
@@ -328,6 +437,9 @@ class AdminKewajibanPesertaController extends Controller
                     'tgl_ttd_nina' => $pem ? $pem->tgl_ttd_nina : null,
                     'status_pkb' => $pem ? ($pem->status_pkb ?: 'BELUM') : 'BELUM',
                     'catatan_pkb' => $pem ? $pem->catatan_pkb : null,
+                    'verified_by' => $pem && $pem->catatan_evaluator && preg_match('/Disahkan & di-ACC oleh ([^(]+)/', $pem->catatan_evaluator, $m) ? trim($m[1]) : ($pem && ($pem->status_pkb === 'DISETUJUI' || $pem->status === 'DISETUJUI') ? 'admin_sindi' : null),
+                    'verified_role' => 'Administrator',
+                    'verified_at' => $pem && isset($pem->tanggal_evaluasi) && $pem->tanggal_evaluasi ? date('Y-m-d H:i', strtotime($pem->tanggal_evaluasi)) : ($pem && isset($pem->tgl_ttd_rusdani) && $pem->tgl_ttd_rusdani ? date('Y-m-d H:i', strtotime($pem->tgl_ttd_rusdani)) : null),
                 ],
                 'master_ttd' => DB::table('lsk_master_ttd')->get()->keyBy('kode'),
             ],
@@ -357,18 +469,24 @@ class AdminKewajibanPesertaController extends Controller
         }
 
         $updates = ['updated_at' => now()];
+        if ($request->has('nama')) {
+            $updates['nama'] = $request->input('nama');
+        }
+        if ($request->has('jabatan')) {
+            $updates['jabatan'] = $request->input('jabatan');
+        }
         if ($request->has('ttd_image')) {
-            $updates['ttd_image'] = $request->input('ttd_image');
+            $updates['ttd_image'] = $request->input('ttd_image') ?: null;
         }
         if ($request->has('nohp')) {
             $updates['nohp'] = $request->input('nohp');
         }
 
-        DB::table('lsk_master_ttd')->where('kode', $kode)->update($updates);
+        DB::table('lsk_master_ttd')->updateOrInsert(['kode' => $kode], $updates);
 
         return response()->json([
             'success' => true,
-            'message' => 'Tanda tangan master ' . ucfirst($kode) . ' berhasil disimpan.',
+            'message' => 'Data dan tanda tangan master ' . ucfirst($kode) . ' berhasil disimpan.',
             'data' => DB::table('lsk_master_ttd')->where('kode', $kode)->first(),
         ]);
     }
@@ -379,12 +497,16 @@ class AdminKewajibanPesertaController extends Controller
     public function verifikasiPkb(Request $request, $id): JsonResponse
     {
         $tahunReq = (int) ($request->input('tahun') ?: now()->year);
-        $record = DB::table('asesi_pemeliharaan')->where('id', $id)->first();
+        // Prioritaskan pencarian berdasarkan id_asesi dan tahunReq
+        $record = DB::table('asesi_pemeliharaan')
+            ->where('id_asesi', $id)
+            ->where('tahun', $tahunReq)
+            ->first();
+        if (!$record && is_numeric($id)) {
+            $record = DB::table('asesi_pemeliharaan')->where('id', (int) $id)->first();
+        }
         if (!$record) {
-            $record = DB::table('asesi_pemeliharaan')
-                ->where('id_asesi', $id)
-                ->where('tahun', $tahunReq)
-                ->first();
+            $record = DB::table('asesi_pemeliharaan')->where('id', $id)->first();
         }
         if (!$record) {
             $record = DB::table('asesi_pemeliharaan')
@@ -410,25 +532,51 @@ class AdminKewajibanPesertaController extends Controller
             return response()->json(['success' => false, 'message' => 'Data pemeliharaan tidak ditemukan'], 404);
         }
 
+        if ($record->status_pkb === 'DISETUJUI') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Form PKB periode ini telah disahkan & di-ACC sebelumnya. Status keputusan tidak dapat diubah kembali.',
+            ], 422);
+        }
+
+        $user = $request->user();
+        $adminName = $user ? ($user->nama ?: ($user->username ?: 'admin_sindi')) : 'admin_sindi';
+        $adminRole = $user ? ($user->role ?: 'Administrator') : 'Administrator';
+
         $statusPkb = $request->input('status_pkb', 'DISETUJUI');
         $updates = [
             'status_pkb' => $statusPkb,
             'catatan_pkb' => $request->input('catatan_pkb'),
         ];
 
-        if ($request->has('ttd_rusdani')) {
+        if ($request->has('ttd_rusdani') && $request->input('ttd_rusdani')) {
             $updates['ttd_rusdani'] = $request->input('ttd_rusdani');
             $updates['tgl_ttd_rusdani'] = $request->input('tgl_ttd_rusdani', date('d/m/Y'));
         }
-        if ($request->has('ttd_nina')) {
+        if ($request->has('ttd_nina') && $request->input('ttd_nina')) {
             $updates['ttd_nina'] = $request->input('ttd_nina');
             $updates['tgl_ttd_nina'] = $request->input('tgl_ttd_nina', date('d/m/Y'));
         }
 
         // Tandai pemeliharaan terpenuhi / DISETUJUI saat form PKB disetujui / di-ACC
-        if ($statusPkb === 'DISETUJUI' || ($request->has('ttd_rusdani') && $request->has('ttd_nina'))) {
+        if ($statusPkb === 'DISETUJUI') {
             $updates['status'] = 'DISETUJUI';
             $updates['tanggal_evaluasi'] = now();
+            $updates['catatan_evaluator'] = "Disahkan & di-ACC oleh {$adminName} ({$adminRole})";
+
+            // Fallback tanda tangan master jika belum terisi
+            if (empty($updates['ttd_rusdani'])) {
+                $updates['ttd_rusdani'] = DB::table('lsk_master_ttd')->where('kode', 'rusdani')->value('ttd_image');
+            }
+            if (empty($updates['ttd_nina'])) {
+                $updates['ttd_nina'] = DB::table('lsk_master_ttd')->where('kode', 'nina')->value('ttd_image');
+            }
+            if (empty($updates['tgl_ttd_rusdani'])) {
+                $updates['tgl_ttd_rusdani'] = $request->input('tgl_ttd_rusdani', date('d/m/Y'));
+            }
+            if (empty($updates['tgl_ttd_nina'])) {
+                $updates['tgl_ttd_nina'] = $request->input('tgl_ttd_nina', date('d/m/Y'));
+            }
         }
 
         DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updates);
@@ -539,9 +687,23 @@ class AdminKewajibanPesertaController extends Controller
             ], 404);
         }
 
+        if ($record->status === 'DISETUJUI') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Status pemeliharaan periode ini telah disahkan & di-ACC sebelumnya. Status keputusan tidak dapat diubah kembali.',
+            ], 422);
+        }
+
+        $adminUser = $request->user();
+        $adminName = $adminUser ? ($adminUser->name ?? $adminUser->username ?? 'admin_sindi') : 'admin_sindi';
+        $adminRole = 'Administrator';
+        $catatan = $request->status === 'DISETUJUI'
+            ? ($request->catatan ?: "Disahkan & di-ACC oleh {$adminName} ({$adminRole})")
+            : $request->catatan;
+
         DB::table('asesi_pemeliharaan')->where('id', $record->id)->update([
             'status' => $request->status,
-            'catatan_evaluator' => $request->catatan,
+            'catatan_evaluator' => $catatan,
             'tanggal_evaluasi' => now(),
         ]);
 

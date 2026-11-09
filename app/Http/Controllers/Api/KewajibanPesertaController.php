@@ -87,6 +87,8 @@ class KewajibanPesertaController extends Controller
         // Auto-create pemeliharaan 5 tahun + evaluasi berikutnya (lazy §7)
         $this->ensureRecords($asesi->no_pendaftaran, $sertifikatNo, $sertifikatAsesmen, $asesi, $tglTerbit);
 
+        $masterTtdMap = DB::table('lsk_master_ttd')->get()->keyBy('kode');
+
         // ── Pemeliharaan + derive status berdasarkan periode kronologis ──
         $pemeliharaanRecords = DB::table('asesi_pemeliharaan')
             ->where('id_asesi', $asesi->no_pendaftaran)
@@ -123,26 +125,33 @@ class KewajibanPesertaController extends Controller
             } else {
                 $approvedYearsMap[$tahunInt] = false;
 
-                // Hirarki 1 & 2: Cek apakah ada kegiatan PKB yang waktunya <= batas akhir periode (atau di bawah periode awal)
+                // Hirarki 1 & 2: Cek apakah ada kegiatan PKB yang tepat waktu (<= batas akhir) atau melewati batas akhir (terlambat)
                 $hasValidPkb = false;
+                $hasLatePkbOnly = false;
                 $pkbRows = DB::table('asesi_pemeliharaan_pkb')->where('id_pemeliharaan', $p->id)->get();
                 if ($pkbRows->count() > 0) {
+                    $onTimeCount = 0;
+                    $lateCount = 0;
                     foreach ($pkbRows as $pkbRow) {
                         if (!empty($pkbRow->waktu)) {
                             try {
                                 $rowWaktu = \Carbon\Carbon::parse($pkbRow->waktu)->startOfDay();
                                 if ($rowWaktu->lte($tempoCarbon)) {
-                                    $hasValidPkb = true;
-                                    break;
+                                    $onTimeCount++;
+                                } else {
+                                    $lateCount++;
                                 }
                             } catch (\Throwable $th) {
-                                $hasValidPkb = true;
-                                break;
+                                $onTimeCount++;
                             }
                         } else {
-                            $hasValidPkb = true;
-                            break;
+                            $onTimeCount++;
                         }
+                    }
+                    if ($onTimeCount > 0) {
+                        $hasValidPkb = true;
+                    } elseif ($lateCount > 0) {
+                        $hasLatePkbOnly = true;
                     }
                 } elseif ($p->status_pkb === 'TERISI' || $p->status_pkb === 'REVISI_TERKIRIM') {
                     $hasValidPkb = true;
@@ -172,9 +181,38 @@ class KewajibanPesertaController extends Controller
                     $bisaUpload = $derived['bisa_upload'];
                 }
 
+                if ($hasLatePkbOnly && !in_array($p->status, ['DISETUJUI', 'PERLU_PERBAIKAN', 'DITOLAK'])) {
+                    $derivedStatus = 'TERLAMBAT';
+                    $bisaUpload = true;
+                }
+
                 if ($derivedStatus !== $p->status && in_array($derivedStatus, ['DISETUJUI', 'SUDAH_UPLOAD', 'BELUM_WAKTUNYA', 'AKAN_JATUH_TEMPO', 'TERLAMBAT', 'BELUM'])) {
                     DB::table('asesi_pemeliharaan')->where('id', $p->id)->update(['status' => $derivedStatus]);
                     $p->status = $derivedStatus;
+                }
+            }
+
+            $ttdRusdani = $p->ttd_rusdani ?: ($isApproved ? ($masterTtdMap['rusdani']->ttd_image ?? null) : null);
+            $tglTtdRusdani = $p->tgl_ttd_rusdani ?: ($isApproved ? ($p->tanggal_evaluasi ? date('d/m/Y', strtotime($p->tanggal_evaluasi)) : date('d/m/Y')) : null);
+            $ttdNina = $p->ttd_nina ?: ($isApproved ? ($masterTtdMap['nina']->ttd_image ?? null) : null);
+            $tglTtdNina = $p->tgl_ttd_nina ?: ($isApproved ? ($p->tanggal_evaluasi ? date('d/m/Y', strtotime($p->tanggal_evaluasi)) : date('d/m/Y')) : null);
+
+            if ($isApproved && (empty($p->ttd_rusdani) || empty($p->ttd_nina))) {
+                $syncUpdates = [];
+                if (empty($p->ttd_rusdani) && $ttdRusdani) {
+                    $syncUpdates['ttd_rusdani'] = $ttdRusdani;
+                    $syncUpdates['tgl_ttd_rusdani'] = $tglTtdRusdani;
+                    $p->ttd_rusdani = $ttdRusdani;
+                    $p->tgl_ttd_rusdani = $tglTtdRusdani;
+                }
+                if (empty($p->ttd_nina) && $ttdNina) {
+                    $syncUpdates['ttd_nina'] = $ttdNina;
+                    $syncUpdates['tgl_ttd_nina'] = $tglTtdNina;
+                    $p->ttd_nina = $ttdNina;
+                    $p->tgl_ttd_nina = $tglTtdNina;
+                }
+                if (!empty($syncUpdates)) {
+                    DB::table('asesi_pemeliharaan')->where('id', $p->id)->update($syncUpdates);
                 }
             }
 
@@ -188,10 +226,10 @@ class KewajibanPesertaController extends Controller
                 'status_label' => $this->statusLabel($derivedStatus),
                 'status_pkb' => $p->status_pkb ?: ($isApproved ? 'DISETUJUI' : 'BELUM'),
                 'catatan_pkb' => $p->catatan_pkb,
-                'ttd_rusdani' => $p->ttd_rusdani,
-                'tgl_ttd_rusdani' => $p->tgl_ttd_rusdani,
-                'ttd_nina' => $p->ttd_nina,
-                'tgl_ttd_nina' => $p->tgl_ttd_nina,
+                'ttd_rusdani' => $ttdRusdani,
+                'tgl_ttd_rusdani' => $tglTtdRusdani,
+                'ttd_nina' => $ttdNina,
+                'tgl_ttd_nina' => $tglTtdNina,
                 'tanggal_mulai' => $periode['tanggal_mulai'],
                 'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
                 'tanggal_upload' => $this->fmtDateTime($p->tanggal_upload),
@@ -339,6 +377,7 @@ class KewajibanPesertaController extends Controller
 
         $tglTerbit = $this->resolveTanggalSertifikat($asesi);
         $today = now()->startOfDay();
+        $masterTtdMap = DB::table('lsk_master_ttd')->get()->keyBy('kode');
 
         // Evaluasi approval dan metadata per tahun berurutan
         $allRecords = DB::table('asesi_pemeliharaan')
@@ -412,6 +451,12 @@ class KewajibanPesertaController extends Controller
             $periode = $meta['periode'] ?? $this->calculatePeriodePemeliharaan($tglTerbit, $thInt);
             $effectiveStatus = $meta['status'] ?? $r->status;
 
+            $isRowApproved = ($meta['is_approved'] ?? false) || $r->status === 'DISETUJUI' || $r->status_pkb === 'DISETUJUI';
+            $rowTtdRusdani = $r->ttd_rusdani ?: ($isRowApproved ? ($masterTtdMap['rusdani']->ttd_image ?? null) : null);
+            $rowTglRusdani = $r->tgl_ttd_rusdani ?: ($isRowApproved ? date('d/m/Y') : null);
+            $rowTtdNina = $r->ttd_nina ?: ($isRowApproved ? ($masterTtdMap['nina']->ttd_image ?? null) : null);
+            $rowTglNina = $r->tgl_ttd_nina ?: ($isRowApproved ? date('d/m/Y') : null);
+
             if (!isset($grouped[$r->id])) {
                 $grouped[$r->id] = [
                     'id' => $r->id,
@@ -420,12 +465,12 @@ class KewajibanPesertaController extends Controller
                     'tahun_ke_label' => $periode['tahun_ke_label'],
                     'status' => $effectiveStatus,
                     'status_label' => $this->statusLabel($effectiveStatus),
-                    'status_pkb' => $r->status_pkb ?: ($meta['is_approved'] ?? false ? 'DISETUJUI' : 'BELUM'),
+                    'status_pkb' => $r->status_pkb ?: ($isRowApproved ? 'DISETUJUI' : 'BELUM'),
                     'catatan_pkb' => $r->catatan_pkb,
-                    'ttd_rusdani' => $r->ttd_rusdani,
-                    'tgl_ttd_rusdani' => $r->tgl_ttd_rusdani,
-                    'ttd_nina' => $r->ttd_nina,
-                    'tgl_ttd_nina' => $r->tgl_ttd_nina,
+                    'ttd_rusdani' => $rowTtdRusdani,
+                    'tgl_ttd_rusdani' => $rowTglRusdani,
+                    'ttd_nina' => $rowTtdNina,
+                    'tgl_ttd_nina' => $rowTglNina,
                     'tanggal_mulai' => $periode['tanggal_mulai'],
                     'tanggal_jatuh_tempo' => $periode['tanggal_jatuh_tempo'],
                     'keterangan_pemenuhan' => $meta['keterangan_pemenuhan'] ?? null,
@@ -634,6 +679,7 @@ class KewajibanPesertaController extends Controller
         $tglTerbit = $this->resolveTanggalSertifikat($asesi);
         $periode = $this->calculatePeriodePemeliharaan($tglTerbit, (int) $tahun);
         $mulaiCarbon = \Carbon\Carbon::parse($periode['tanggal_mulai'])->startOfDay();
+        $tempoCarbon = \Carbon\Carbon::parse($periode['tanggal_jatuh_tempo'])->startOfDay();
 
         // Guard: Jika tahun > 1 dan periode tahun berjalan masih memenuhi (belum jatuh tempo)
         if ($periode['tahun_ke'] > 1) {
@@ -710,15 +756,8 @@ class KewajibanPesertaController extends Controller
                 } catch (\Throwable $e) {}
             }
 
-            // Hirarki 1: Waktu pelaksanaan tidak boleh melewati batas akhir periode (tanggal_jatuh_tempo)
-            // Hirarki 2: Waktu pelaksanaan di bawah/sebelum batas awal periode (< tanggal_mulai) tetap sah dan tidak terlambat
-            if ($waktuParsed && $waktuParsed->gt($tempoCarbon)) {
-                $tglTempoIndo = $this->formatTanggalIndo($periode['tanggal_jatuh_tempo']);
-                return response()->json([
-                    'success' => false,
-                    'message' => "Baris " . ($i + 1) . " ({$row['tema']}): Tanggal pelaksanaan ({$this->formatTanggalIndo($row['waktu'])}) melewati batas akhir periode pemeliharaan ({$tglTempoIndo}).",
-                ], 422);
-            }
+            // Catatan: Waktu pelaksanaan diperbolehkan melewati batas akhir periode (tanggal_jatuh_tempo),
+            // dan sistem akan memberikan status 'TERLAMBAT' (tidak memblokir penyimpanan).
         }
 
         $userFolder = $this->getUserFolderName($asesi, $request->user());
@@ -780,16 +819,36 @@ class KewajibanPesertaController extends Controller
             // Pengisian Form PKB hanya mencatat/memperbarui daftar kegiatan PKB di asesi_pemeliharaan_pkb.
             // Jangan mengubah status pemeliharaan ataupun mengisi tanggal_upload, karena upload berkas resmi
             // (penunjukan, logbook, cover_tim, ka_andal) dilakukan melalui tombol "Upload PKB" (submitPemeliharaan).
-            $updatePkb = [];
+            // Evaluasi apakah kegiatan dilaksanakan tepat waktu atau melewati batas akhir
+            $hasOnTime = false;
+            $hasLate = false;
+            foreach ($rows as $r) {
+                if (!empty($r['waktu'])) {
+                    try {
+                        $w = \Carbon\Carbon::parse($r['waktu'])->startOfDay();
+                        if ($w->gt($tempoCarbon)) {
+                            $hasLate = true;
+                        } else {
+                            $hasOnTime = true;
+                        }
+                    } catch (\Throwable $th) {}
+                }
+            }
+
+            $updatePkb = [
+                'tanggal_upload' => now(),
+            ];
+
             if ($record->status_pkb === 'PERLU_PERBAIKAN') {
                 $updatePkb['status_pkb'] = 'REVISI_TERKIRIM';
-            } elseif (empty($record->status_pkb) || $record->status_pkb === 'BELUM') {
-                $updatePkb['status_pkb'] = 'TERISI';
+            } else {
+                $updatePkb['status_pkb'] = 'SUDAH_UPLOAD';
             }
-            if ($record->status === 'TERLAMBAT') {
-                $adaFile = !empty($record->file_surat_tugas_lpjp);
-                $updatePkb['status'] = $adaFile ? 'SUDAH_UPLOAD' : 'BELUM';
+
+            if ($record->status !== 'DISETUJUI') {
+                $updatePkb['status'] = 'SUDAH_UPLOAD';
             }
+
             if (!empty($updatePkb)) {
                 DB::table('asesi_pemeliharaan')->where('id', $record->id)->update($updatePkb);
             }
@@ -798,7 +857,7 @@ class KewajibanPesertaController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => count($rows) . ' kegiatan PKB berhasil disimpan',
+                'message' => count($rows) . ' kegiatan Form PKB berhasil dikirim ke Admin untuk pengecekan',
             ], 201);
 
         } catch (\Exception $e) {

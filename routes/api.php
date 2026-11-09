@@ -621,6 +621,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     });
 
     // Verifikasi Sertifikat Peserta (ATPA / KTPA)
+    // Master Tanda Tangan & Pejabat LSK
+    Route::prefix('master-ttd')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'getMasterTtd']);
+        Route::post('/', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'updateMasterTtd']);
+    });
+
     // Monitoring & Verifikasi Kewajiban Peserta (ATPA / KTPA)
     Route::prefix('kewajiban-peserta')->group(function () {
         Route::get('/master-ttd', [\App\Http\Controllers\Api\AdminKewajibanPesertaController::class, 'getMasterTtd']);

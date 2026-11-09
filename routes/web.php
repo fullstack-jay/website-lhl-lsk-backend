@@ -26,3 +26,16 @@ Route::get('home', [Home\HomeController::class, 'index'])->middleware(['auth', '
 
 // Swagger Documentation
 Route::get('swagger', fn () => view('swagger.index'))->name('swagger');
+
+// Fallback untuk foto_kewajiban jika berkas fisik tidak ditemukan di disk
+Route::get('foto_kewajiban/{path}', function ($path) {
+    $fullPath = public_path('foto_kewajiban/' . $path);
+    if (file_exists($fullPath) && is_file($fullPath)) {
+        return response()->file($fullPath);
+    }
+    return response()->json([
+        'status' => 'error',
+        'message' => 'Berkas belum diunggah atau tidak ditemukan di penyimpanan server.',
+        'file' => $path,
+    ], 404);
+})->where('path', '.*');
